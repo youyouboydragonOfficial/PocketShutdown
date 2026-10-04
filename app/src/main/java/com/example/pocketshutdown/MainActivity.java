@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.AnimationSet;
 import android.view.animation.ScaleAnimation;
@@ -23,7 +24,13 @@ public class MainActivity extends Activity {
     TextView text(String s, float size, int color) { TextView v=new TextView(this); v.setText(s); v.setTextSize(size); v.setTextColor(color); return v; }
     GradientDrawable bg(int color, float r) { GradientDrawable g=new GradientDrawable(); g.setColor(color); g.setCornerRadius(dp(r)); return g; }
     void build() {
-        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(24),dp(24),dp(24),dp(18)); root.setBackgroundColor(Color.rgb(9,11,22));
+        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(24),dp(38),dp(24),dp(28)); root.setBackgroundColor(Color.rgb(9,11,22));
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int top = insets.getInsets(WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout()).top;
+            int bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+            v.setPadding(dp(24), dp(24) + top, dp(24), dp(18) + bottom);
+            return insets;
+        });
         TextView title=text("POCKET SHUTDOWN",12,0xffaaa6c8); title.setLetterSpacing(.22f); root.addView(title,new LinearLayout.LayoutParams(-1,dp(30)));
         FrameLayout hero=new FrameLayout(this); hero.setLayoutParams(new LinearLayout.LayoutParams(-1,0,1));
         TextView orb=text("⌁",92,0xffe9e7ff); orb.setGravity(Gravity.CENTER); orb.setBackground(bg(0xff17152e,100)); FrameLayout.LayoutParams op=new FrameLayout.LayoutParams(dp(170),dp(170),Gravity.CENTER); hero.addView(orb,op);
