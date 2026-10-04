@@ -18,6 +18,9 @@ import android.os.Environment;
 import android.os.Build;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageInfo;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
@@ -39,6 +42,7 @@ public class MainActivity extends Activity {
     static final String PREFS="settings";
     int dp(float n) { return (int)(n * getResources().getDisplayMetrics().density + .5f); }
     TextView status;
+    TextView bluetoothStatus;
     TextView updateStatus;
     Dialog updateDialog;
     @Override public void onCreate(Bundle b) { super.onCreate(b); build(); requestBluetoothPermission(); }
@@ -58,7 +62,8 @@ public class MainActivity extends Activity {
         SignalAnimationView signal=new SignalAnimationView(this); hero.addView(signal,new FrameLayout.LayoutParams(-1,-1));
         TextView head=text("ポケットの中から、\n電源をオフ",28,Color.WHITE); head.setGravity(Gravity.CENTER); head.setTypeface(null,1); FrameLayout.LayoutParams hp=new FrameLayout.LayoutParams(-1,dp(100),Gravity.BOTTOM); hp.bottomMargin=dp(8); hero.addView(head,hp); root.addView(hero);
         TextView sub=text("Bluetoothイヤホンの音量ボタンを\n400ms以内に2回押すだけ",15,0xffa9a8bc); sub.setGravity(Gravity.CENTER); root.addView(sub,new LinearLayout.LayoutParams(-1,dp(55)));
-        status=text("●  サービス未接続",14,0xffffb86b); status.setGravity(Gravity.CENTER); status.setPadding(0,dp(12),0,dp(12)); root.addView(status,new LinearLayout.LayoutParams(-1,dp(52)));
+        status=text("●  サービス未接続",14,0xffffb86b); status.setGravity(Gravity.CENTER); status.setPadding(0,dp(12),0,dp(4)); root.addView(status,new LinearLayout.LayoutParams(-1,dp(40)));
+        bluetoothStatus=text("Bluetooth: 接続状態を確認中…",13,0xffa9a8bc); bluetoothStatus.setGravity(Gravity.CENTER); root.addView(bluetoothStatus,new LinearLayout.LayoutParams(-1,dp(34)));
         Button settings=new Button(this); settings.setText("アクセシビリティを設定"); settings.setTextColor(Color.WHITE); settings.setTextSize(15); settings.setAllCaps(false); settings.setBackground(bg(0xff5547b8,18)); settings.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))); root.addView(settings,new LinearLayout.LayoutParams(-1,dp(54)));
         LinearLayout autoRow=new LinearLayout(this); autoRow.setGravity(Gravity.CENTER_VERTICAL); autoRow.setPadding(dp(14),0,dp(8),0); autoRow.setBackground(bg(0xff15172a,16));
         TextView autoLabel=text("シャットダウンを自動実行",15,Color.WHITE); autoRow.addView(autoLabel,new LinearLayout.LayoutParams(0,dp(54),1));
@@ -68,7 +73,7 @@ public class MainActivity extends Activity {
         TextView creator=text("©youyouboydragon",11,0xff5e5d70); creator.setGravity(Gravity.CENTER); root.addView(creator,new LinearLayout.LayoutParams(-1,dp(26)));
         updateStatus=text("GitHubの最新リリースを確認できます",11,0xff77768a); updateStatus.setGravity(Gravity.CENTER); root.addView(updateStatus,new LinearLayout.LayoutParams(-1,dp(30)));
         Button update=new Button(this); update.setText("アップデートを確認"); update.setTextSize(13); update.setAllCaps(false); update.setTextColor(0xffd9d5ff); update.setBackground(bg(0xff242044,16)); update.setOnClickListener(v->checkForUpdate()); root.addView(update,new LinearLayout.LayoutParams(-1,dp(46)));
-        setContentView(root); refresh();
+        setContentView(root); refresh(); refreshBluetoothStatus();
         if(!getPreferences(0).getBoolean("tutorialShown",false)){ getPreferences(0).edit().putBoolean("tutorialShown",true).apply(); root.postDelayed(()->showGuide(false),350); }
         root.postDelayed(this::checkForUpdate,700);
     }
@@ -112,5 +117,6 @@ public class MainActivity extends Activity {
     int compareVersion(String a,String b){ try {String[] x=a.split("\\."),y=b.split("\\."); for(int i=0;i<Math.max(x.length,y.length);i++){int p=i<x.length?Integer.parseInt(x[i]):0,q=i<y.length?Integer.parseInt(y[i]):0;if(p!=q)return p>q?1:-1;}}catch(Exception ignored){} return 0; }
     void downloadUpdate(String url){ updateStatus.setText("APKをダウンロード中…"); new Thread(()->{try{File dir=new File(getCacheDir(),"updates");dir.mkdirs();File apk=new File(dir,"PocketShutdown-update.apk");HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(10000);c.setReadTimeout(30000);InputStream in=c.getInputStream();FileOutputStream out=new FileOutputStream(apk);byte[] buf=new byte[8192];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);in.close();out.close();runOnUiThread(()->installApk(apk));}catch(Exception e){runOnUiThread(()->updateStatus.setText("APKのダウンロードに失敗しました"));}}).start(); }
     void installApk(File apk){ try { Uri uri=Uri.parse("content://com.example.pocketshutdown.fileprovider/update"); Intent i=new Intent(Intent.ACTION_VIEW);i.setDataAndType(uri,"application/vnd.android.package-archive");i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(i);}catch(Exception e){updateStatus.setText("インストーラーを開けませんでした");} }
-    @Override protected void onResume(){super.onResume(); refresh();}
+    @Override protected void onResume(){super.onResume(); refresh(); refreshBluetoothStatus();}
+void refreshBluetoothStatus(){ if(bluetoothStatus==null)return; if(Build.VERSION.SDK_INT>=31&&checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=PackageManager.PERMISSION_GRANTED){bluetoothStatus.setText("Bluetooth: 接続確認の許可が必要");return;} BluetoothAdapter adapter=BluetoothAdapter.getDefaultAdapter(); if(adapter==null||!adapter.isEnabled()){bluetoothStatus.setText("Bluetooth: OFF");return;} bluetoothStatus.setText("Bluetooth: 接続中の機器を確認中…"); final java.util.LinkedHashSet<String> names=new java.util.LinkedHashSet<>(); final Runnable render=()->{if(names.size()>0){StringBuilder s=new StringBuilder("Bluetooth: ");for(String n:names){if(s.length()>12)s.append(" / ");s.append(n);}bluetoothStatus.setText(s.toString());}else bluetoothStatus.setText("Bluetooth: オーディオ未接続");}; BluetoothProfile.ServiceListener listener=new BluetoothProfile.ServiceListener(){public void onServiceConnected(int profile,BluetoothProfile proxy){try{for(BluetoothDevice d:proxy.getConnectedDevices())if(d.getName()!=null)names.add(d.getName());}catch(SecurityException ignored){}render.run();adapter.closeProfileProxy(profile,proxy);}public void onServiceDisconnected(int profile){}}; try{adapter.getProfileProxy(this,listener,BluetoothProfile.A2DP);adapter.getProfileProxy(this,listener,BluetoothProfile.HEADSET);}catch(SecurityException ignored){bluetoothStatus.setText("Bluetooth: 接続確認の許可が必要");} }
 }
