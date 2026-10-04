@@ -8,7 +8,7 @@ Bluetoothイヤホンの音量ボタンを400ms以内に2回押すと、アク�
 
 ## APK
 
-[PocketShutdown-v1.0.6-debug.apkをダウンロード](https://github.com/youyouboydragonOfficial/PocketShutdown/releases/download/v1.0.6/PocketShutdown-v1.0.6-debug.apk)
+[PocketShutdown-v1.0.8-debug.apkをダウンロード](https://github.com/youyouboydragonOfficial/PocketShutdown/releases/download/v1.0.8/PocketShutdown-v1.0.8-debug.apk)
 
 初回起動時にチュートリアル、使い方、利用規約を表示します。設定画面の「シャットダウンを自動実行」をOFFにすると、電源メニューを表示するだけのモードにできます。
 
