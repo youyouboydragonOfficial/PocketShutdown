@@ -8,6 +8,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.InputDevice;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothProfile;
+import android.Manifest;
+import android.os.Build;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.Locale;
@@ -27,13 +31,22 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     @Override protected boolean onKeyEvent(KeyEvent event) {
         if(event.getAction()!=KeyEvent.ACTION_DOWN || event.getRepeatCount()!=0) return false;
         InputDevice source=event.getDevice();
-        if(source==null || !source.isExternal()) return false;
+        if(source==null || !source.isExternal() || !bluetoothAudioConnected()) return false;
         int code=event.getKeyCode(); long now=System.currentTimeMillis();
         if(code==KeyEvent.KEYCODE_VOLUME_UP) { if(now-lastVolumeUp<=DOUBLE_TAP_MS){ trigger(); lastVolumeUp=0; } else lastVolumeUp=now; return true; }
         if(code==KeyEvent.KEYCODE_VOLUME_DOWN) { if(now-lastVolumeDown<=DOUBLE_TAP_MS){ trigger(); lastVolumeDown=0; } else lastVolumeDown=now; return true; }
         return false;
     }
     private void trigger() { performGlobalAction(GLOBAL_ACTION_POWER_DIALOG); if(getSharedPreferences("settings",MODE_PRIVATE).getBoolean("autoClick",true)){ handler.postDelayed(()->clickPowerOff(0), MENU_DELAY_MS); handler.postDelayed(()->clickPowerOff(1), 650); handler.postDelayed(()->clickPowerOff(2), 1100); } }
+    private boolean bluetoothAudioConnected() {
+        try {
+            if(Build.VERSION.SDK_INT>=31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
+            BluetoothAdapter a=BluetoothAdapter.getDefaultAdapter(); if(a==null || !a.isEnabled()) return false;
+            boolean audio=a.getProfileConnectionState(BluetoothProfile.A2DP)==BluetoothProfile.STATE_CONNECTED || a.getProfileConnectionState(BluetoothProfile.HEADSET)==BluetoothProfile.STATE_CONNECTED;
+            if(Build.VERSION.SDK_INT>=31) audio=audio || a.getProfileConnectionState(BluetoothProfile.LE_AUDIO)==BluetoothProfile.STATE_CONNECTED;
+            return audio;
+        } catch(RuntimeException e) { return false; }
+    }
     private void clickPowerOff(int attempt) { AccessibilityNodeInfo root=getRootInActiveWindow(); if(root==null) return; String[] labels={"電源を切る","電源オフ","Power off","Shut down","Turn off"}; for(String label:labels){ AccessibilityNodeInfo n=find(root,label); if(n!=null){ if(n.isClickable()) n.performAction(AccessibilityNodeInfo.ACTION_CLICK); else if(n.getParent()!=null) n.getParent().performAction(AccessibilityNodeInfo.ACTION_CLICK); return; } } }
     private AccessibilityNodeInfo find(AccessibilityNodeInfo root,String label){ for(AccessibilityNodeInfo n:root.findAccessibilityNodeInfosByText(label)) if(n!=null) return n; return null; }
     public static boolean isEnabled(Context c){ String id=new ComponentName(c,ShutdownAccessibilityService.class).flattenToString(); String enabled=android.provider.Settings.Secure.getString(c.getContentResolver(),"enabled_accessibility_services"); return enabled!=null && enabled.toLowerCase(Locale.ROOT).contains(id.toLowerCase(Locale.ROOT)); }

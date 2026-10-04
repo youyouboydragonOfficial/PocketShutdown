@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Intent;
+import android.Manifest;
 import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Canvas;
@@ -15,6 +16,7 @@ import android.os.Bundle;
 import android.os.StrictMode;
 import android.os.Environment;
 import android.os.Build;
+import android.content.pm.PackageManager;
 import android.content.pm.PackageInfo;
 import android.provider.Settings;
 import android.view.Gravity;
@@ -39,7 +41,8 @@ public class MainActivity extends Activity {
     TextView status;
     TextView updateStatus;
     Dialog updateDialog;
-    @Override public void onCreate(Bundle b) { super.onCreate(b); build(); }
+    @Override public void onCreate(Bundle b) { super.onCreate(b); build(); requestBluetoothPermission(); }
+    void requestBluetoothPermission(){ if(Build.VERSION.SDK_INT>=31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT},41); }
     TextView text(String s, float size, int color) { TextView v=new TextView(this); v.setText(s); v.setTextSize(size); v.setTextColor(color); return v; }
     GradientDrawable bg(int color, float r) { GradientDrawable g=new GradientDrawable(); g.setColor(color); g.setCornerRadius(dp(r)); return g; }
     void build() {
