@@ -6,3 +6,4 @@ local.properties
 outputs/release-build/
 outputs/*.zip
 outputs/*.apk
+outputs/*.idsig
