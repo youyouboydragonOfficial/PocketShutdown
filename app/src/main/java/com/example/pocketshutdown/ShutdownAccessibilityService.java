@@ -47,7 +47,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     private long lastMediaTime=0; private int lastMediaCode=-1;
     private void handleExternalDoubleTap(int code){if(!bluetoothAudioConnected())return;recordKey("メディアキー");long now=System.currentTimeMillis();if(code==lastMediaCode&&now-lastMediaTime<=DOUBLE_TAP_MS){trigger();lastMediaTime=0;}else{lastMediaCode=code;lastMediaTime=now;}}
     private void recordKey(String name){getSharedPreferences("diagnostics",MODE_PRIVATE).edit().putString("last_key_name",name).putLong("last_key_time",System.currentTimeMillis()).apply();}
-    private void trigger() { performGlobalAction(GLOBAL_ACTION_POWER_DIALOG); if(getSharedPreferences("settings",MODE_PRIVATE).getBoolean("autoClick",true)){ handler.postDelayed(()->clickPowerOff(0), MENU_DELAY_MS); handler.postDelayed(()->clickPowerOff(1), 650); handler.postDelayed(()->clickPowerOff(2), 1100); } }
+    private void trigger() { if(!getSharedPreferences("settings",MODE_PRIVATE).getBoolean("autoClick",false)) return; if(!bluetoothAudioConnected()) return; performGlobalAction(GLOBAL_ACTION_POWER_DIALOG); handler.postDelayed(()->clickPowerOff(0), MENU_DELAY_MS); handler.postDelayed(()->clickPowerOff(1), 650); handler.postDelayed(()->clickPowerOff(2), 1100); }
     private boolean bluetoothAudioConnected() {
         try {
             if(Build.VERSION.SDK_INT>=31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
