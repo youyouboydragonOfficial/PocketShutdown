@@ -49,12 +49,14 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         int deviceId=event.getDeviceId();
         if(lastDeviceId!=-1 && deviceId!=lastDeviceId){ lastVolumeUp=0; lastVolumeDown=0; }
         lastDeviceId=deviceId;
+        recordKey(code==KeyEvent.KEYCODE_VOLUME_UP?"音量アップ":"音量ダウン");
         if(code==KeyEvent.KEYCODE_VOLUME_UP) { if(now-lastVolumeUp<=DOUBLE_TAP_MS){ trigger(); lastVolumeUp=0; } else lastVolumeUp=now; return true; }
         if(code==KeyEvent.KEYCODE_VOLUME_DOWN) { if(now-lastVolumeDown<=DOUBLE_TAP_MS){ trigger(); lastVolumeDown=0; } else lastVolumeDown=now; return true; }
         return false;
     }
     private long lastMediaTime=0; private int lastMediaCode=-1;
-    private void handleExternalDoubleTap(int code){if(!bluetoothAudioConnected())return;long now=System.currentTimeMillis();if(code==lastMediaCode&&now-lastMediaTime<=DOUBLE_TAP_MS){trigger();lastMediaTime=0;}else{lastMediaCode=code;lastMediaTime=now;}}
+    private void handleExternalDoubleTap(int code){if(!bluetoothAudioConnected())return;recordKey("メディアキー");long now=System.currentTimeMillis();if(code==lastMediaCode&&now-lastMediaTime<=DOUBLE_TAP_MS){trigger();lastMediaTime=0;}else{lastMediaCode=code;lastMediaTime=now;}}
+    private void recordKey(String name){getSharedPreferences("diagnostics",MODE_PRIVATE).edit().putString("last_key_name",name).putLong("last_key_time",System.currentTimeMillis()).apply();}
     private void trigger() { performGlobalAction(GLOBAL_ACTION_POWER_DIALOG); if(getSharedPreferences("settings",MODE_PRIVATE).getBoolean("autoClick",true)){ handler.postDelayed(()->clickPowerOff(0), MENU_DELAY_MS); handler.postDelayed(()->clickPowerOff(1), 650); handler.postDelayed(()->clickPowerOff(2), 1100); } }
     private boolean bluetoothAudioConnected() {
         try {
