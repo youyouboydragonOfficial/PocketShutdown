@@ -39,19 +39,9 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     @Override public void onInterrupt() { }
     @Override public void onDestroy(){if(mediaSession!=null){mediaSession.setActive(false);mediaSession.release();}super.onDestroy();}
     @Override protected boolean onKeyEvent(KeyEvent event) {
-        if(event.getAction()!=KeyEvent.ACTION_DOWN || event.getRepeatCount()!=0) return false;
-        // Bluetooth接続確認を必須にする。InputDevice.isExternal()は機種によって
-        // Bluetoothイヤホンを外部扱いしないため、ここでは使用しない。
-        if(!bluetoothAudioConnected()) return false;
-        int code=event.getKeyCode(); long now=System.currentTimeMillis();
-        if(code==KeyEvent.KEYCODE_POWER) return false;
-        if(code!=KeyEvent.KEYCODE_VOLUME_UP && code!=KeyEvent.KEYCODE_VOLUME_DOWN) return false;
-        int deviceId=event.getDeviceId();
-        if(lastDeviceId!=-1 && deviceId!=lastDeviceId){ lastVolumeUp=0; lastVolumeDown=0; }
-        lastDeviceId=deviceId;
-        recordKey(code==KeyEvent.KEYCODE_VOLUME_UP?"音量アップ":"音量ダウン");
-        if(code==KeyEvent.KEYCODE_VOLUME_UP) { if(now-lastVolumeUp<=DOUBLE_TAP_MS){ trigger(); lastVolumeUp=0; } else lastVolumeUp=now; return true; }
-        if(code==KeyEvent.KEYCODE_VOLUME_DOWN) { if(now-lastVolumeDown<=DOUBLE_TAP_MS){ trigger(); lastVolumeDown=0; } else lastVolumeDown=now; return true; }
+        // 緊急安全措置: Android端末の物理キーとBluetoothキーを
+        // onKeyEvent上で確実に区別できない端末があるため、音量キーは処理しない。
+        // Bluetoothのメディアキー経路のみ handleExternalDoubleTap() で扱う。
         return false;
     }
     private long lastMediaTime=0; private int lastMediaCode=-1;
