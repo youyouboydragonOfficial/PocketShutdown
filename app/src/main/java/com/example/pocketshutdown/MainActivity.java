@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
@@ -15,6 +18,8 @@ import android.view.animation.AlphaAnimation;
 import android.view.animation.AnimationSet;
 import android.view.animation.ScaleAnimation;
 import android.widget.*;
+import android.animation.ValueAnimator;
+import android.view.ViewGroup;
 
 public class MainActivity extends Activity {
     static final String PREFS="settings";
@@ -33,8 +38,7 @@ public class MainActivity extends Activity {
         });
         TextView title=text("POCKET SHUTDOWN",12,0xffaaa6c8); title.setLetterSpacing(.22f); root.addView(title,new LinearLayout.LayoutParams(-1,dp(30)));
         FrameLayout hero=new FrameLayout(this); hero.setLayoutParams(new LinearLayout.LayoutParams(-1,0,1));
-        TextView orb=text("⌁",92,0xffe9e7ff); orb.setGravity(Gravity.CENTER); orb.setBackground(bg(0xff17152e,100)); FrameLayout.LayoutParams op=new FrameLayout.LayoutParams(dp(170),dp(170),Gravity.CENTER); hero.addView(orb,op);
-        TextView waves=text("◌",180,0x338b7cff); waves.setGravity(Gravity.CENTER); hero.addView(waves,new FrameLayout.LayoutParams(dp(290),dp(290),Gravity.CENTER)); waves.bringToFront(); orb.bringToFront(); animate(waves);
+        SignalAnimationView signal=new SignalAnimationView(this); hero.addView(signal,new FrameLayout.LayoutParams(-1,-1));
         TextView head=text("ポケットの中から、\n電源をオフ",28,Color.WHITE); head.setGravity(Gravity.CENTER); head.setTypeface(null,1); FrameLayout.LayoutParams hp=new FrameLayout.LayoutParams(-1,dp(100),Gravity.BOTTOM); hp.bottomMargin=dp(8); hero.addView(head,hp); root.addView(hero);
         TextView sub=text("Bluetoothイヤホンの音量ボタンを\n400ms以内に2回押すだけ",15,0xffa9a8bc); sub.setGravity(Gravity.CENTER); root.addView(sub,new LinearLayout.LayoutParams(-1,dp(55)));
         status=text("●  サービス未接続",14,0xffffb86b); status.setGravity(Gravity.CENTER); status.setPadding(0,dp(12),0,dp(12)); root.addView(status,new LinearLayout.LayoutParams(-1,dp(52)));
@@ -48,7 +52,17 @@ public class MainActivity extends Activity {
         setContentView(root); refresh();
         if(!getPreferences(0).getBoolean("onboarded",false)) root.postDelayed(()->showGuide(false),350);
     }
-    void animate(View v) { AnimationSet a=new AnimationSet(true); a.addAnimation(new ScaleAnimation(.84f,1.08f,.84f,1.08f,1, .5f,1,.5f)); a.addAnimation(new AlphaAnimation(.2f,.65f)); a.setDuration(1800); a.setRepeatMode(android.view.animation.Animation.REVERSE); a.setRepeatCount(-1); v.startAnimation(a); }
+    static class SignalAnimationView extends View {
+        final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG); final RectF r=new RectF(); float phase;
+        SignalAnimationView(android.content.Context c){ super(c); p.setStrokeCap(Paint.Cap.ROUND); setLayerType(View.LAYER_TYPE_SOFTWARE,null); ValueAnimator a=ValueAnimator.ofFloat(0,1); a.setDuration(2200); a.setRepeatCount(ValueAnimator.INFINITE); a.addUpdateListener(v->{phase=(float)v.getAnimatedValue(); invalidate();}); a.start(); }
+        @Override protected void onDraw(Canvas c){ super.onDraw(c); float cx=getWidth()/2f, cy=getHeight()/2f-18, d=Math.min(getWidth(),getHeight());
+            p.setStyle(Paint.Style.FILL); p.setColor(0xff13162b); r.set(cx-d*.34f,cy-d*.34f,cx+d*.34f,cy+d*.34f); c.drawRoundRect(r,dpStatic(getContext(),30),dpStatic(getContext(),30),p);
+            for(int i=0;i<3;i++){ float t=(phase+i/3f)%1f; p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dpStatic(getContext(),2)); p.setColor(Color.argb((int)(90*(1-t)),139,124,255)); c.drawCircle(cx,cy,d*(.22f+t*.23f),p); }
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(dpStatic(getContext(),6)); p.setColor(0xff8b7cff); r.set(cx-42,cy-28,cx+42,cy+48); c.drawArc(r,210,120,false,p); c.drawLine(cx-42,cy+10,cx-42,cy+35,p); c.drawLine(cx+42,cy+10,cx+42,cy+35,p);
+            p.setColor(Color.WHITE); p.setStrokeWidth(dpStatic(getContext(),4)); c.drawLine(cx,cy-44,cx,cy-5,p); c.drawArc(new RectF(cx-27,cy-27,cx+27,cy+27),-42,264,false,p);
+        }
+        static int dpStatic(android.content.Context c,float n){return (int)(n*c.getResources().getDisplayMetrics().density+.5f);}
+    }
     void refresh() { boolean on=ShutdownAccessibilityService.isEnabled(this); if(status!=null){status.setText(on?"●  監視中 — 準備完了":"●  サービス未接続"); status.setTextColor(on?0xff74e0b0:0xffffb86b);} }
     void showGuide(boolean manual) {
         new AlertDialog.Builder(this).setTitle("チュートリアル").setMessage("Pocket Shutdownへようこそ。\n\nBluetoothイヤホンの音量ボタンを400ms以内に2回押すと、電源メニューを呼び出します。アクセシビリティ設定を有効にしてからご利用ください。\n\n次に「使い方」と「利用規約」を確認します。")

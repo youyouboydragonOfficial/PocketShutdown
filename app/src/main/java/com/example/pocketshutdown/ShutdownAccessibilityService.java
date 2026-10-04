@@ -1,6 +1,7 @@
 package com.example.pocketshutdown;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.ComponentName;
 import android.content.Context;
 import android.os.Handler;
@@ -14,6 +15,12 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     private static final long DOUBLE_TAP_MS=400, MENU_DELAY_MS=300;
     private long lastVolumeUp=0, lastVolumeDown=0;
     private final Handler handler=new Handler(Looper.getMainLooper());
+    @Override protected void onServiceConnected() {
+        AccessibilityServiceInfo info=getServiceInfo();
+        info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
+        info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+        setServiceInfo(info);
+    }
     @Override public void onAccessibilityEvent(AccessibilityEvent e) { }
     @Override public void onInterrupt() { }
     @Override protected boolean onKeyEvent(KeyEvent event) {
