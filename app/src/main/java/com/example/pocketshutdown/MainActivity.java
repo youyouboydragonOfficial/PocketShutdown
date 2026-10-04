@@ -69,7 +69,7 @@ public class MainActivity extends Activity {
         updateStatus=text("GitHubの最新リリースを確認できます",11,0xff77768a); updateStatus.setGravity(Gravity.CENTER); root.addView(updateStatus,new LinearLayout.LayoutParams(-1,dp(30)));
         Button update=new Button(this); update.setText("アップデートを確認"); update.setTextSize(13); update.setAllCaps(false); update.setTextColor(0xffd9d5ff); update.setBackground(bg(0xff242044,16)); update.setOnClickListener(v->checkForUpdate()); root.addView(update,new LinearLayout.LayoutParams(-1,dp(46)));
         setContentView(root); refresh();
-        if(!getPreferences(0).getBoolean("onboarded",false)) root.postDelayed(()->showGuide(false),350);
+        if(!getPreferences(0).getBoolean("tutorialShown",false)){ getPreferences(0).edit().putBoolean("tutorialShown",true).apply(); root.postDelayed(()->showGuide(false),350); }
         root.postDelayed(this::checkForUpdate,700);
     }
     static class SignalAnimationView extends View {
