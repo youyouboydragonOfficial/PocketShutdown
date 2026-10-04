@@ -7,6 +7,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyEvent;
+import android.view.InputDevice;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.Locale;
@@ -25,6 +26,8 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     @Override public void onInterrupt() { }
     @Override protected boolean onKeyEvent(KeyEvent event) {
         if(event.getAction()!=KeyEvent.ACTION_DOWN || event.getRepeatCount()!=0) return false;
+        InputDevice source=event.getDevice();
+        if(source==null || !source.isExternal()) return false;
         int code=event.getKeyCode(); long now=System.currentTimeMillis();
         if(code==KeyEvent.KEYCODE_VOLUME_UP) { if(now-lastVolumeUp<=DOUBLE_TAP_MS){ trigger(); lastVolumeUp=0; } else lastVolumeUp=now; return true; }
         if(code==KeyEvent.KEYCODE_VOLUME_DOWN) { if(now-lastVolumeDown<=DOUBLE_TAP_MS){ trigger(); lastVolumeDown=0; } else lastVolumeDown=now; return true; }
