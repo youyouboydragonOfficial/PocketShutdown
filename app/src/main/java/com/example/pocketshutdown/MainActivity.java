@@ -2,6 +2,7 @@ package com.example.pocketshutdown;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.graphics.Color;
@@ -37,6 +38,7 @@ public class MainActivity extends Activity {
     int dp(float n) { return (int)(n * getResources().getDisplayMetrics().density + .5f); }
     TextView status;
     TextView updateStatus;
+    Dialog updateDialog;
     @Override public void onCreate(Bundle b) { super.onCreate(b); build(); }
     TextView text(String s, float size, int color) { TextView v=new TextView(this); v.setText(s); v.setTextSize(size); v.setTextColor(color); return v; }
     GradientDrawable bg(int color, float r) { GradientDrawable g=new GradientDrawable(); g.setColor(color); g.setCornerRadius(dp(r)); return g; }
@@ -92,12 +94,16 @@ public class MainActivity extends Activity {
             .setPositiveButton("同意して始める",(d,w)->getPreferences(0).edit().putBoolean("onboarded",true).apply()).setCancelable(false).show();
     }
     void checkForUpdate() {
-        if(updateStatus!=null) updateStatus.setText("GitHub Releasesを確認中…");
+        showUpdateLoading();
+        final long started=System.currentTimeMillis();
         new Thread(()->{ try {
             HttpURLConnection c=(HttpURLConnection)new URL("https://api.github.com/repos/youyouboydragonOfficial/PocketShutdown/releases/latest").openConnection(); c.setConnectTimeout(8000); c.setReadTimeout(8000); c.setRequestProperty("Accept","application/vnd.github+json");
-            InputStream in=c.getInputStream(); java.io.ByteArrayOutputStream b=new java.io.ByteArrayOutputStream(); byte[] buf=new byte[4096]; int n; while((n=in.read(buf))!=-1)b.write(buf,0,n); in.close(); JSONObject release=new JSONObject(new String(b.toByteArray(),"UTF-8")); String tag=release.optString("tag_name"); String apkUrl=null; org.json.JSONArray assets=release.optJSONArray("assets"); if(assets!=null) for(int i=0;i<assets.length();i++){ JSONObject a=assets.getJSONObject(i); if(a.optString("name").endsWith(".apk")){apkUrl=a.optString("browser_download_url");break;} } String current=getPackageManager().getPackageInfo(getPackageName(),0).versionName; boolean newer=compareVersion(tag.replace("v", ""),current)>0; final String downloadUrl=apkUrl; runOnUiThread(()->{ if(newer&&downloadUrl!=null){updateStatus.setText("新しいバージョンがあります: "+tag); new AlertDialog.Builder(this).setTitle("アップデート available").setMessage("GitHubに新しいAPKがあります。ダウンロードして更新しますか？").setPositiveButton("ダウンロード",(d,w)->downloadUpdate(downloadUrl)).setNegativeButton("あとで",null).show();} else updateStatus.setText("最新バージョンを使用中  •  "+current); });
-        }catch(Exception e){runOnUiThread(()->updateStatus.setText("更新確認を完了できませんでした"));} }).start();
+            InputStream in=c.getInputStream(); java.io.ByteArrayOutputStream b=new java.io.ByteArrayOutputStream(); byte[] buf=new byte[4096]; int n; while((n=in.read(buf))!=-1)b.write(buf,0,n); in.close(); JSONObject release=new JSONObject(new String(b.toByteArray(),"UTF-8")); String tag=release.optString("tag_name"); String apkUrl=null; org.json.JSONArray assets=release.optJSONArray("assets"); if(assets!=null) for(int i=0;i<assets.length();i++){ JSONObject a=assets.getJSONObject(i); if(a.optString("name").endsWith(".apk")){apkUrl=a.optString("browser_download_url");break;} } String current=getPackageManager().getPackageInfo(getPackageName(),0).versionName; boolean newer=compareVersion(tag.replace("v", ""),current)>0; final String downloadUrl=apkUrl; waitForLoading(started); runOnUiThread(()->{finishUpdateLoading(); if(newer&&downloadUrl!=null){updateStatus.setText("新しいバージョンがあります: "+tag); new AlertDialog.Builder(this).setTitle("アップデートがあります").setMessage("現在: "+current+"\n最新: "+tag+"\n\nGitHubに新しいAPKがあります。ダウンロードして更新しますか？").setPositiveButton("ダウンロード",(d,w)->downloadUpdate(downloadUrl)).setNegativeButton("あとで",null).show();} else {updateStatus.setText("最新バージョンです  •  "+current); new AlertDialog.Builder(this).setTitle("確認完了").setMessage("現在のバージョンは「"+current+"」です。\n新しいアップデートはありません。\n\n最新バージョンを使用しています。").setPositiveButton("OK",null).show();} });
+        }catch(Exception e){waitForLoading(started); runOnUiThread(()->{finishUpdateLoading(); updateStatus.setText("更新確認を完了できませんでした"); new AlertDialog.Builder(this).setTitle("更新確認").setMessage("GitHub Releasesを確認できませんでした。\n通信状態を確認して、もう一度お試しください。").setPositiveButton("OK",null).show();});} }).start();
     }
+    void showUpdateLoading(){ if(updateDialog!=null&&updateDialog.isShowing())return; LinearLayout box=new LinearLayout(this); box.setGravity(Gravity.CENTER_VERTICAL); box.setPadding(dp(24),dp(20),dp(24),dp(20)); ProgressBar spinner=new ProgressBar(this); spinner.setIndeterminate(true); box.addView(spinner,new LinearLayout.LayoutParams(dp(40),dp(40))); TextView t=text("  GitHub Releasesを確認中…",15,Color.WHITE); box.addView(t,new LinearLayout.LayoutParams(-2,dp(50))); updateDialog=new Dialog(this); updateDialog.setTitle("POCKET SHUTDOWN"); updateDialog.setContentView(box); updateDialog.setCancelable(false); updateDialog.show(); }
+    void waitForLoading(long started){ long rest=3000-(System.currentTimeMillis()-started); if(rest>0)try{Thread.sleep(rest);}catch(InterruptedException ignored){} }
+    void finishUpdateLoading(){ if(updateDialog!=null&&updateDialog.isShowing())updateDialog.dismiss(); }
     int compareVersion(String a,String b){ try {String[] x=a.split("\\."),y=b.split("\\."); for(int i=0;i<Math.max(x.length,y.length);i++){int p=i<x.length?Integer.parseInt(x[i]):0,q=i<y.length?Integer.parseInt(y[i]):0;if(p!=q)return p>q?1:-1;}}catch(Exception ignored){} return 0; }
     void downloadUpdate(String url){ updateStatus.setText("APKをダウンロード中…"); new Thread(()->{try{File dir=new File(getCacheDir(),"updates");dir.mkdirs();File apk=new File(dir,"PocketShutdown-update.apk");HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(10000);c.setReadTimeout(30000);InputStream in=c.getInputStream();FileOutputStream out=new FileOutputStream(apk);byte[] buf=new byte[8192];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);in.close();out.close();runOnUiThread(()->installApk(apk));}catch(Exception e){runOnUiThread(()->updateStatus.setText("APKのダウンロードに失敗しました"));}}).start(); }
     void installApk(File apk){ try { Uri uri=Uri.parse("content://com.example.pocketshutdown.fileprovider/update"); Intent i=new Intent(Intent.ACTION_VIEW);i.setDataAndType(uri,"application/vnd.android.package-archive");i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(i);}catch(Exception e){updateStatus.setText("インストーラーを開けませんでした");} }
