@@ -19,6 +19,7 @@ import java.util.Locale;
 public class ShutdownAccessibilityService extends AccessibilityService {
     private static final long DOUBLE_TAP_MS=400, MENU_DELAY_MS=300;
     private long lastVolumeUp=0, lastVolumeDown=0;
+    private int lastDeviceId=-1;
     private final Handler handler=new Handler(Looper.getMainLooper());
     @Override protected void onServiceConnected() {
         AccessibilityServiceInfo info=getServiceInfo();
@@ -33,6 +34,11 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         InputDevice source=event.getDevice();
         if(source==null || !source.isExternal() || !bluetoothAudioConnected()) return false;
         int code=event.getKeyCode(); long now=System.currentTimeMillis();
+        if(code==KeyEvent.KEYCODE_POWER) return false;
+        if(code!=KeyEvent.KEYCODE_VOLUME_UP && code!=KeyEvent.KEYCODE_VOLUME_DOWN) return false;
+        int deviceId=event.getDeviceId();
+        if(lastDeviceId!=-1 && deviceId!=lastDeviceId){ lastVolumeUp=0; lastVolumeDown=0; }
+        lastDeviceId=deviceId;
         if(code==KeyEvent.KEYCODE_VOLUME_UP) { if(now-lastVolumeUp<=DOUBLE_TAP_MS){ trigger(); lastVolumeUp=0; } else lastVolumeUp=now; return true; }
         if(code==KeyEvent.KEYCODE_VOLUME_DOWN) { if(now-lastVolumeDown<=DOUBLE_TAP_MS){ trigger(); lastVolumeDown=0; } else lastVolumeDown=now; return true; }
         return false;
