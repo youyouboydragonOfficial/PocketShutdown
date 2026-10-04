@@ -3,3 +3,5 @@ work/
 build/
 app/build/
 local.properties
+outputs/release-build/
+outputs/*.zip
