@@ -39,7 +39,7 @@ public class IntroActivity extends Activity implements SurfaceHolder.Callback {
             player=new MediaPlayer();
             player.setDisplay(holder);
             player.setDataSource(this,Uri.parse("android.resource://"+getPackageName()+"/"+R.raw.intro_splash));
-            player.setOnPreparedListener(mp->{try{mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING);mp.start();}catch(Throwable error){openMain();}});
+            player.setOnPreparedListener(mp->{try{mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);mp.start();}catch(Throwable error){openMain();}});
             player.setOnCompletionListener(mp->openMain());
             player.setOnErrorListener((mp,what,extra)->{openMain();return true;});
             player.prepareAsync();
