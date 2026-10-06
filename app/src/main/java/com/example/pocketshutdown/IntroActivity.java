@@ -30,7 +30,9 @@ public class IntroActivity extends Activity implements SurfaceHolder.Callback {
             surfaceView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
             surfaceView.getHolder().addCallback(this);
             setContentView(surfaceView);
-            handler.postDelayed(fallback,8000);
+            // 再生時間を取得する前に失敗した場合だけ働く長めの保険タイマー。
+            // 固定8秒で切り替えると、長い動画が途中で終了してしまう。
+            handler.postDelayed(fallback,120000);
         }catch(Throwable error){openMain();}
     }
 
@@ -39,7 +41,16 @@ public class IntroActivity extends Activity implements SurfaceHolder.Callback {
             player=new MediaPlayer();
             player.setDisplay(holder);
             player.setDataSource(this,Uri.parse("android.resource://"+getPackageName()+"/"+R.raw.intro_splash));
-            player.setOnPreparedListener(mp->{try{mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);mp.start();}catch(Throwable error){openMain();}});
+            player.setOnPreparedListener(mp->{
+                try{
+                    mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
+                    handler.removeCallbacks(fallback);
+                    // 動画の実時間＋余裕まで待つ。動画本体を途中で切らない。
+                    long finishGuard=Math.max(120000L,mp.getDuration()+3000L);
+                    handler.postDelayed(fallback,finishGuard);
+                    mp.start();
+                }catch(Throwable error){openMain();}
+            });
             player.setOnCompletionListener(mp->openMain());
             player.setOnErrorListener((mp,what,extra)->{openMain();return true;});
             player.prepareAsync();
