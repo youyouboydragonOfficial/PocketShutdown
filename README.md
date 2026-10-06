@@ -1,6 +1,6 @@
 # Pocket Shutdown
 
-Bluetoothイヤホンの音量ボタンを400ms以内に2回押すと、アクセシビリティのグローバルアクションで電源メニューを開き、300ms後に「電源を切る」ボタンを見つけてクリックするAndroidツールです。
+Bluetoothイヤホンのメディア操作を400ms以内に2回押すと、アクセシビリティのグローバルアクションで画面をOFFにして端末をロックするAndroidツールです。
 
 本アプリが検出するのは、イヤホンの音量操作によってAndroidへ届く音量アップ／音量ダウンのキーイベントです。同じ音量ボタンを400ms以内に2回押すと反応します。Bluetooth機器や端末メーカーによってキーイベントの配送仕様が異なるため、すべてのイヤホンでの動作は保証されません。
 
@@ -8,9 +8,9 @@ Bluetoothイヤホンの音量ボタンを400ms以内に2回押すと、アク�
 
 ## APK
 
-[PocketShutdown-v1.1.1-debug.apkをダウンロード](https://github.com/youyouboydragonOfficial/PocketShutdown/releases/download/v1.1.1/PocketShutdown-v1.1.1-debug.apk)
+[PocketShutdown-v1.2.0-debug.apkをダウンロード](https://github.com/youyouboydragonOfficial/PocketShutdown/releases/download/v1.2.0/PocketShutdown-v1.2.0-debug.apk)
 
-初回起動時にチュートリアル、使い方、利用規約を表示します。設定画面の「シャットダウンを自動実行」をOFFにすると、電源メニューを表示するだけのモードにできます。
+初回起動時にチュートリアル、使い方、利用規約を表示します。設定画面の「イヤホン2回タップで画面OFF」をOFFにすると、自動ロックを停止できます。
 
 ## 使い方
 
@@ -18,4 +18,4 @@ Bluetoothイヤホンの音量ボタンを400ms以内に2回押すと、アク�
 2. Pocket Shutdownを有効化する
 3. Bluetoothイヤホンの音量ボタンを同じ側で素早く2回押す
 
-端末やOSによっては音量キーがアクセシビリティサービスへ配送されない場合、またはシステムの電源ダイアログがアクセシビリティノードを公開しない場合があります。その場合は自動シャットダウンできません。実機で必ず動作確認してください。
+端末やOSによってはBluetoothメディア操作がアクセシビリティサービスへ配送されない場合があります。その場合は画面OFFできません。実機で必ず動作確認してください。

@@ -1,3 +1,3 @@
 <resources>
-    <string name="accessibility_description">Bluetoothイヤホンの音量ボタンをダブルタップして電源メニューを開きます。</string>
+    <string name="accessibility_description">Bluetoothイヤホンのメディア操作をダブルタップして画面をOFF・ロックします。</string>
 </resources>

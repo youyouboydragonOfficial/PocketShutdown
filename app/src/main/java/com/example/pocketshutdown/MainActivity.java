@@ -71,9 +71,9 @@ public class MainActivity extends Activity {
         Button settings=new Button(this); settings.setText("アクセシビリティを設定"); settings.setTextColor(Color.WHITE); settings.setTextSize(15); settings.setAllCaps(false); settings.setBackground(bg(0xff5547b8,18)); settings.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))); root.addView(settings,new LinearLayout.LayoutParams(-1,dp(54)));
         Button battery=new Button(this); battery.setText("バックグラウンド維持設定"); battery.setTextColor(0xffd9d5ff); battery.setTextSize(13); battery.setAllCaps(false); battery.setBackground(bg(0xff242044,18)); battery.setOnClickListener(v->openBatterySettings()); root.addView(battery,new LinearLayout.LayoutParams(-1,dp(46)));
         LinearLayout autoRow=new LinearLayout(this); autoRow.setGravity(Gravity.CENTER_VERTICAL); autoRow.setPadding(dp(14),0,dp(8),0); autoRow.setBackground(bg(0xff15172a,16));
-        TextView autoLabel=text("シャットダウンを自動実行",15,Color.WHITE); autoRow.addView(autoLabel,new LinearLayout.LayoutParams(0,dp(54),1));
+        TextView autoLabel=text("イヤホン2回タップで画面OFF",15,Color.WHITE); autoRow.addView(autoLabel,new LinearLayout.LayoutParams(0,dp(54),1));
         Switch auto=new Switch(this); auto.setChecked(getSharedPreferences(PREFS,MODE_PRIVATE).getBoolean("autoClick",false)); auto.setOnCheckedChangeListener((button, checked)->getSharedPreferences(PREFS,MODE_PRIVATE).edit().putBoolean("autoClick",checked).apply()); autoRow.addView(auto); root.addView(autoRow,new LinearLayout.LayoutParams(-1,dp(58)));
-        TextView note=text("必要な設定はユーザー補助のみ。\n更新確認にはインターネットを使用します。",12,0xff77768a); note.setGravity(Gravity.CENTER); note.setPadding(0,dp(8),0,0); root.addView(note,new LinearLayout.LayoutParams(-1,dp(58)));
+        TextView note=text("Bluetoothイヤホンの2回タップで画面をOFF・ロックします。\n必要な設定はユーザー補助とBluetooth接続です。",12,0xff77768a); note.setGravity(Gravity.CENTER); note.setPadding(0,dp(8),0,0); root.addView(note,new LinearLayout.LayoutParams(-1,dp(58)));
         TextView terms=text("チュートリアル・使い方・利用規約を表示",12,0xffaaa6c8); terms.setGravity(Gravity.CENTER); terms.setOnClickListener(v->showGuide(true)); root.addView(terms,new LinearLayout.LayoutParams(-1,dp(34)));
         TextView creator=text("©youyouboydragon",11,0xff5e5d70); creator.setGravity(Gravity.CENTER); root.addView(creator,new LinearLayout.LayoutParams(-1,dp(26)));
         updateStatus=text("GitHubの最新リリースを確認できます",11,0xff77768a); updateStatus.setGravity(Gravity.CENTER); root.addView(updateStatus,new LinearLayout.LayoutParams(-1,dp(30)));
@@ -95,15 +95,15 @@ public class MainActivity extends Activity {
     }
     void refresh() { boolean on=ShutdownAccessibilityService.isEnabled(this); if(status!=null){status.setText(on?"●  監視中 — 準備完了":"●  サービス未接続"); status.setTextColor(on?0xff74e0b0:0xffffb86b);} }
     void showGuide(boolean manual) {
-        new AlertDialog.Builder(this).setTitle("チュートリアル").setMessage("Pocket Shutdownへようこそ。\n\nBluetoothイヤホンの音量ボタンを400ms以内に2回押すと、電源メニューを呼び出します。アクセシビリティ設定を有効にしてからご利用ください。\n\n次に「使い方」と「利用規約」を確認します。")
+        new AlertDialog.Builder(this).setTitle("チュートリアル").setMessage("Pocket Shutdownへようこそ。\n\nBluetoothイヤホンのメディア操作を400ms以内に2回押すと、画面をOFFにして端末をロックします。アクセシビリティ設定を有効にしてからご利用ください。\n\n次に「使い方」と「利用規約」を確認します。")
             .setPositiveButton("使い方へ",(d,w)->showHowTo()).setNegativeButton("閉じる",null).show();
     }
     void showHowTo() {
-        new AlertDialog.Builder(this).setTitle("使い方").setMessage("1. アクセシビリティを設定をタップ\n2. Pocket ShutdownをONにする\n3. 同じ音量ボタンを素早く2回押す\n\n自動クリックをOFFにすると、電源メニューを表示するだけになります。")
+        new AlertDialog.Builder(this).setTitle("使い方").setMessage("1. アクセシビリティを設定をタップ\n2. Pocket ShutdownをONにする\n3. Bluetoothイヤホンのメディア操作を素早く2回押す\n\n「イヤホン2回タップで画面OFF」をOFFにすると、画面ロックは実行されません。")
             .setPositiveButton("利用規約へ",(d,w)->showTerms()).show();
     }
     void showTerms() {
-        new AlertDialog.Builder(this).setTitle("利用規約・注意事項").setMessage("本アプリは利用者自身の端末上で、利用者の明示操作を補助するツールです。\n\n・ダブルタップで電源が切れるため、誤操作に注意してください。\n・端末メーカー、Androidバージョン、Bluetooth機器によりキー入力や自動クリックが動作しない場合があります。\n・自動シャットダウン前に、必要なデータを保存してください。\n・作者はデータ消失、予期せぬシャットダウン、サービス停止等について責任を負いません。\n\n©youyouboydragon")
+        new AlertDialog.Builder(this).setTitle("利用規約・注意事項").setMessage("本アプリは利用者自身の端末上で、利用者の明示操作を補助するツールです。\n\n・ダブルタップで画面がOFFになり端末がロックされます。\n・端末メーカー、Androidバージョン、Bluetooth機器により入力が届かない場合があります。\n・画面OFF前に、必要なデータを保存してください。\n・作者は入力遅延、画面ロック、サービス停止等について責任を負いません。\n\n©youyouboydragon")
             .setPositiveButton("同意して始める",(d,w)->getPreferences(0).edit().putBoolean("onboarded",true).apply()).setCancelable(false).show();
     }
     void checkForUpdate() {

@@ -15,7 +15,6 @@ import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.content.Intent;
 import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.Locale;
 
 public class ShutdownAccessibilityService extends AccessibilityService {
@@ -47,7 +46,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     private long lastMediaTime=0; private int lastMediaCode=-1;
     private void handleExternalDoubleTap(int code){if(!bluetoothAudioConnected())return;recordKey("メディアキー");long now=System.currentTimeMillis();if(code==lastMediaCode&&now-lastMediaTime<=DOUBLE_TAP_MS){trigger();lastMediaTime=0;}else{lastMediaCode=code;lastMediaTime=now;}}
     private void recordKey(String name){getSharedPreferences("diagnostics",MODE_PRIVATE).edit().putString("last_key_name",name).putLong("last_key_time",System.currentTimeMillis()).apply();}
-    private void trigger() { if(!getSharedPreferences("settings",MODE_PRIVATE).getBoolean("autoClick",false)) return; if(!bluetoothAudioConnected()) return; performGlobalAction(GLOBAL_ACTION_POWER_DIALOG); handler.postDelayed(()->clickPowerOff(0), MENU_DELAY_MS); handler.postDelayed(()->clickPowerOff(1), 650); handler.postDelayed(()->clickPowerOff(2), 1100); }
+    private void trigger() { if(!getSharedPreferences("settings",MODE_PRIVATE).getBoolean("autoClick",false)) return; if(!bluetoothAudioConnected()) return; performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN); }
     private boolean bluetoothAudioConnected() {
         try {
             if(Build.VERSION.SDK_INT>=31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)!=android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
@@ -57,9 +56,5 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             return audio;
         } catch(RuntimeException e) { return false; }
     }
-    private void clickPowerOff(int attempt) { String[] labels={"電源を切る","電源オフ","Power off","Shut down","Turn off"}; java.util.ArrayList<AccessibilityNodeInfo> roots=new java.util.ArrayList<>(); AccessibilityNodeInfo active=getRootInActiveWindow(); if(active!=null) roots.add(active); if(Build.VERSION.SDK_INT>=21) for(android.view.accessibility.AccessibilityWindowInfo w:getWindows()){AccessibilityNodeInfo r=w.getRoot();if(r!=null)roots.add(r);} for(AccessibilityNodeInfo root:roots) for(String label:labels){ AccessibilityNodeInfo n=find(root,label); if(n!=null){ AccessibilityNodeInfo target=n; while(target!=null&&!target.isClickable())target=target.getParent(); if(target!=null&&target.performAction(AccessibilityNodeInfo.ACTION_CLICK))return; } } }
-    private AccessibilityNodeInfo find(AccessibilityNodeInfo root,String label){ for(AccessibilityNodeInfo n:root.findAccessibilityNodeInfosByText(label)) if(n!=null)return n; return findRecursive(root,label); }
-    private AccessibilityNodeInfo findRecursive(AccessibilityNodeInfo node,String label){ if(node==null)return null; CharSequence t=node.getText(),d=node.getContentDescription(); if(matches(t,label)||matches(d,label))return node; for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=findRecursive(node.getChild(i),label);if(found!=null)return found;} return null; }
-    private boolean matches(CharSequence value,String label){return value!=null&&value.toString().toLowerCase(Locale.ROOT).contains(label.toLowerCase(Locale.ROOT));}
     public static boolean isEnabled(Context c){ String id=new ComponentName(c,ShutdownAccessibilityService.class).flattenToString(); String enabled=android.provider.Settings.Secure.getString(c.getContentResolver(),"enabled_accessibility_services"); return enabled!=null && enabled.toLowerCase(Locale.ROOT).contains(id.toLowerCase(Locale.ROOT)); }
 }
