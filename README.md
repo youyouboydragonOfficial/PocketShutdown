@@ -8,7 +8,7 @@ Bluetoothイヤホンのメディア操作を400ms以内に2回押すと、ア�
 
 ## APK
 
-[PocketShutdown-v1.2.1-debug.apkをダウンロード](https://github.com/youyouboydragonOfficial/PocketShutdown/releases/download/v1.2.1/PocketShutdown-v1.2.1-debug.apk)
+[PocketShutdown-v1.2.2-debug.apkをダウンロード](https://github.com/youyouboydragonOfficial/PocketShutdown/releases/download/v1.2.2/PocketShutdown-v1.2.2-debug.apk)
 
 初回起動時にチュートリアル、使い方、利用規約を表示します。設定画面の「イヤホン2回タップで画面OFF」をOFFにすると、自動ロックを停止できます。
 
