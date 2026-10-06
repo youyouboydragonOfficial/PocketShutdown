@@ -1,4 +1,4 @@
-# Pocket Shutdown
+# Pocket Lock
 
 Bluetoothイヤホンのメディア操作を400ms以内に2回押すと、アクセシビリティのグローバルアクションで画面をOFFにして端末をロックするAndroidツールです。
 
@@ -8,14 +8,14 @@ Bluetoothイヤホンのメディア操作を400ms以内に2回押すと、ア�
 
 ## APK
 
-[PocketShutdown-v1.2.3-debug.apkをダウンロード](https://github.com/youyouboydragonOfficial/PocketShutdown/releases/download/v1.2.3/PocketShutdown-v1.2.3-debug.apk)
+[PocketLock-v1.2.5-debug.apkをダウンロード](https://github.com/youyouboydragonOfficial/PocketShutdown/releases/download/v1.2.5/PocketShutdown-v1.2.5-debug.apk)
 
 初回起動時にチュートリアル、使い方、利用規約を表示します。設定画面の「イヤホン2回タップで画面OFF」をOFFにすると、自動ロックを停止できます。
 
 ## 使い方
 
 1. アプリを起動し、「アクセシビリティを設定」を開く
-2. Pocket Shutdownを有効化する
+2. Pocket Lockを有効化する
 3. Bluetoothイヤホンの音量ボタンを同じ側で素早く2回押す
 
 端末やOSによってはBluetoothメディア操作がアクセシビリティサービスへ配送されない場合があります。その場合は画面OFFできません。実機で必ず動作確認してください。
