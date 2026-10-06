@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.pocketshutdown" android:versionCode="13" android:versionName="1.2.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.pocketshutdown" android:versionCode="14" android:versionName="1.2.1">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -6,11 +6,12 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <application android:theme="@style/AppTheme" android:label="Pocket Shutdown" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:allowBackup="false" android:supportsRtl="true">
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".IntroActivity" android:screenOrientation="portrait" android:theme="@style/SplashTheme" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="false" />
         <service android:name=".ShutdownAccessibilityService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:label="Pocket Shutdown（音量ダブルタップ）" android:description="@string/accessibility_description">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config"/>
