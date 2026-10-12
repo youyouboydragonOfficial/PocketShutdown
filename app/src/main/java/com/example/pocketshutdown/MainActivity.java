@@ -12,6 +12,9 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ClipDrawable;
+import android.graphics.drawable.LayerDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Build;
 import android.content.pm.PackageManager;
@@ -44,6 +47,9 @@ public class MainActivity extends Activity {
     TextView updateStatus;
     Dialog updateDialog;
     Dialog downloadDialog;
+    ProgressBar downloadBar;
+    TextView downloadPercentText;
+    TextView downloadSizeText;
     Dialog accessibilityGate;
 
     @Override
@@ -174,7 +180,7 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         root.addView(terms, new LinearLayout.LayoutParams(-1, dp(34)));
 
-        updateStatus = text("最新バージョン v1.9.0", 11, 0xff77768a);
+        updateStatus = text("最新バージョン v2.0.0", 11, 0xff77768a);
         updateStatus.setGravity(Gravity.CENTER);
         root.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(26)));
 
@@ -349,10 +355,10 @@ public class MainActivity extends Activity {
                     if (newer && downloadUrl != null) {
                         updateStatus.setText("新しいバージョンがあります: " + tag);
                         String sizeText = downloadSize > 0 ? "\n更新サイズ  約 " + formatFileSize(downloadSize) : "";
-                        showUpdateResult("UPDATE READY", "現在  " + current + "\n最新  " + tag + sizeText + "\n\n新しいバージョンをダウンロードできます。", true, downloadUrl);
+                        showUpdateResult("UPDATE READY", "現在  " + current + "\n最新  " + tag + sizeText + "\n\n新しいバージョンをダウンロードできます。", true, downloadUrl, downloadSize);
                     } else {
                         updateStatus.setText("最新バージョンです  •  " + current);
-                        showUpdateResult("ALL CLEAR", "現在のバージョン  " + current + "\n\n最新バージョンを使用しています。", false, null);
+                        showUpdateResult("ALL CLEAR", "現在のバージョン  " + current + "\n\n最新バージョンを使用しています。", false, null, 0);
                     }
                 });
             } catch (Exception e) {
@@ -360,7 +366,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     finishUpdateLoading();
                     updateStatus.setText("更新確認を完了できませんでした");
-                    showUpdateResult("CHECK FAILED", "GitHub Releasesを確認できませんでした。\n\n通信状態を確認して再試行してください。", false, null);
+                    showUpdateResult("CHECK FAILED", "GitHub Releasesを確認できませんでした。\n\n通信状態を確認して再試行してください。", false, null, 0);
                 });
             }
         }).start();
@@ -400,7 +406,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    void showUpdateResult(String title, String message, boolean canDownload, String url) {
+    void showUpdateResult(String title, String message, boolean canDownload, String url, long downloadSize) {
         final Dialog d = new Dialog(this);
         d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         LinearLayout box = new LinearLayout(this);
@@ -428,7 +434,7 @@ public class MainActivity extends Activity {
             dl.setBackground(bg(0xff5547b8, 14));
             dl.setOnClickListener(v -> {
                 d.dismiss();
-                downloadUpdate(url);
+                downloadUpdate(url, downloadSize);
             });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(126), dp(44));
             lp.leftMargin = dp(8);
@@ -470,7 +476,32 @@ public class MainActivity extends Activity {
         return String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
-    void downloadUpdate(String url) {
+    void updateDownloadProgress(int percent, long currentBytes, long totalBytes) {
+        if (downloadBar != null) {
+            if (percent >= 0) {
+                downloadBar.setIndeterminate(false);
+                downloadBar.setProgress(percent);
+            } else {
+                downloadBar.setIndeterminate(true);
+            }
+        }
+        if (downloadPercentText != null) {
+            if (percent >= 0) {
+                downloadPercentText.setText(percent + "%");
+            } else {
+                downloadPercentText.setText("--- %");
+            }
+        }
+        if (downloadSizeText != null) {
+            if (totalBytes > 0) {
+                downloadSizeText.setText(formatFileSize(currentBytes) + " / " + formatFileSize(totalBytes));
+            } else {
+                downloadSizeText.setText(formatFileSize(currentBytes));
+            }
+        }
+    }
+
+    void downloadUpdate(String url, long expectedSize) {
         showDownloadLoading();
         new Thread(() -> {
             try {
@@ -480,13 +511,37 @@ public class MainActivity extends Activity {
                 HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
                 c.setConnectTimeout(10000);
                 c.setReadTimeout(30000);
+                c.setRequestProperty("User-Agent", "PocketLockApp");
+
+                long total = c.getContentLengthLong();
+                if (total <= 0) total = expectedSize;
+                final long totalBytes = total;
+
                 InputStream in = c.getInputStream();
                 FileOutputStream out = new FileOutputStream(apk);
                 byte[] buf = new byte[8192];
                 int n;
-                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                long downloaded = 0;
+                long lastUpdate = 0;
+
+                while ((n = in.read(buf)) != -1) {
+                    out.write(buf, 0, n);
+                    downloaded += n;
+                    long now = System.currentTimeMillis();
+                    if (now - lastUpdate > 35 || (totalBytes > 0 && downloaded >= totalBytes)) {
+                        lastUpdate = now;
+                        final int percent = totalBytes > 0 ? (int)((downloaded * 100) / totalBytes) : -1;
+                        final long cur = downloaded;
+                        runOnUiThread(() -> updateDownloadProgress(percent, cur, totalBytes));
+                    }
+                }
                 in.close();
                 out.close();
+
+                final long finalTotal = totalBytes > 0 ? totalBytes : downloaded;
+                runOnUiThread(() -> updateDownloadProgress(100, finalTotal, finalTotal));
+                Thread.sleep(250);
+
                 runOnUiThread(() -> {
                     finishDownloadLoading();
                     installApk(apk);
@@ -495,7 +550,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     finishDownloadLoading();
                     updateStatus.setText("APKのダウンロードに失敗しました");
-                    showUpdateResult("DOWNLOAD FAILED", "APKをダウンロードできませんでした。\n\n通信状態を確認して、もう一度お試しください。", false, null);
+                    showUpdateResult("DOWNLOAD FAILED", "APKをダウンロードできませんでした。\n\n通信状態を確認して、もう一度お試しください。", false, null, 0);
                 });
             }
         }).start();
@@ -505,23 +560,56 @@ public class MainActivity extends Activity {
         if (downloadDialog != null && downloadDialog.isShowing()) return;
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER);
-        box.setPadding(dp(32), dp(30), dp(32), dp(30));
+        box.setPadding(dp(28), dp(26), dp(28), dp(24));
         box.setBackground(updateCard());
+
         TextView over = text("POCKET LOCK  /  INSTALL", 11, 0xff8b7cff);
-        over.setGravity(Gravity.CENTER);
         over.setLetterSpacing(.12f);
-        box.addView(over, new LinearLayout.LayoutParams(-1, dp(30)));
-        ProgressBar spinner = new ProgressBar(this, null, android.R.attr.progressBarStyleLarge);
-        spinner.setIndeterminate(true);
-        box.addView(spinner, new LinearLayout.LayoutParams(dp(72), dp(72)));
+        box.addView(over, new LinearLayout.LayoutParams(-1, dp(24)));
+
         TextView title = text("アップデートをダウンロード中…", 17, Color.WHITE);
-        title.setGravity(Gravity.CENTER);
         title.setTypeface(null, 1);
-        box.addView(title, new LinearLayout.LayoutParams(-1, dp(44)));
-        TextView sub = text("この画面を閉じずにお待ちください", 12, 0xffa9a8bc);
+        box.addView(title, new LinearLayout.LayoutParams(-1, dp(36)));
+
+        // ％表示 (大きく見やすい緑色)
+        downloadPercentText = text("0%", 28, 0xff22c55e);
+        downloadPercentText.setTypeface(null, 1);
+        downloadPercentText.setGravity(Gravity.CENTER);
+        box.addView(downloadPercentText, new LinearLayout.LayoutParams(-1, dp(44)));
+
+        // 緑色の進行バー
+        downloadBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        downloadBar.setMax(100);
+        downloadBar.setProgress(0);
+        downloadBar.setIndeterminate(false);
+
+        GradientDrawable bgTrack = new GradientDrawable();
+        bgTrack.setColor(0xff13261b); // 暗緑色のトラック背景
+        bgTrack.setCornerRadius(dp(6));
+
+        GradientDrawable progressFill = new GradientDrawable();
+        progressFill.setColor(0xff22c55e); // 鮮やかな緑色
+        progressFill.setCornerRadius(dp(6));
+        ClipDrawable clipProgress = new ClipDrawable(progressFill, Gravity.LEFT, ClipDrawable.HORIZONTAL);
+
+        LayerDrawable layerDrawable = new LayerDrawable(new Drawable[]{bgTrack, clipProgress});
+        layerDrawable.setId(0, android.R.id.background);
+        layerDrawable.setId(1, android.R.id.progress);
+        downloadBar.setProgressDrawable(layerDrawable);
+
+        box.addView(downloadBar, new LinearLayout.LayoutParams(-1, dp(14)));
+
+        // サイズ表示 (例: 120 KB / 207 KB)
+        downloadSizeText = text("0 KB / ---", 12, 0xffa9a8bc);
+        downloadSizeText.setGravity(Gravity.RIGHT);
+        downloadSizeText.setPadding(0, dp(6), 0, 0);
+        box.addView(downloadSizeText, new LinearLayout.LayoutParams(-1, dp(24)));
+
+        TextView sub = text("この画面を閉じずにお待ちください", 12, 0xff77768a);
         sub.setGravity(Gravity.CENTER);
-        box.addView(sub, new LinearLayout.LayoutParams(-1, dp(28)));
+        sub.setPadding(0, dp(8), 0, 0);
+        box.addView(sub, new LinearLayout.LayoutParams(-1, dp(30)));
+
         downloadDialog = new Dialog(this);
         downloadDialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         downloadDialog.setContentView(box);
