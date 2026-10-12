@@ -2,63 +2,95 @@ package com.example.pocketshutdown;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.media.MediaPlayer;
-import android.net.Uri;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
-import android.view.View;
+import android.os.Looper;
+import android.view.Gravity;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 
-public class IntroActivity extends Activity implements SurfaceHolder.Callback {
-    private MediaPlayer player;
-    private SurfaceView surfaceView;
-    private boolean opened;
-    private final Handler handler=new Handler();
-    private final Runnable fallback=this::openMain;
+public class IntroActivity extends Activity {
+    private boolean opened = false;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private ImageView logoView;
 
-    @Override public void onCreate(Bundle state){
-        super.onCreate(state);
-        try{
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        try {
             requestWindowFeature(Window.FEATURE_NO_TITLE);
-            getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);
-            getWindow().setNavigationBarColor(0xff000000);
-            surfaceView=new SurfaceView(this);
-            surfaceView.setKeepScreenOn(true);
-            surfaceView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
-            surfaceView.setOnClickListener(v -> openMain());
-            surfaceView.getHolder().addCallback(this);
-            setContentView(surfaceView);
-            // 再生時間を取得する前に失敗した場合だけ働く長めの保険タイマー。
-            // 固定8秒で切り替えると、長い動画が途中で終了してしまう。
-            handler.postDelayed(fallback,120000);
-        }catch(Throwable error){openMain();}
+            getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+            FrameLayout root = new FrameLayout(this);
+            // 画像の地の色（(255, 255, 251)）と画面全体を完全に一致させてシームレスに表示
+            root.setBackgroundColor(Color.rgb(255, 255, 251));
+
+            logoView = new ImageView(this);
+            logoView.setImageResource(R.drawable.intro_logo);
+            logoView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            logoView.setAlpha(0f);
+            logoView.setScaleX(0.95f);
+            logoView.setScaleY(0.95f);
+
+            int size = (int)(Math.min(getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels) * 0.74f);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(size, size, Gravity.CENTER);
+            root.addView(logoView, lp);
+
+            // 画面タップで即スキップ
+            root.setOnClickListener(v -> openMain());
+
+            setContentView(root);
+
+            // Unity風の「ゆっくり点いて、ゆっくり消える」アニメーション演出 (約2.4秒)
+            startUnitySplashAnimation();
+        } catch (Throwable error) {
+            openMain();
+        }
     }
 
-    @Override public void surfaceCreated(SurfaceHolder holder){
-        try{
-            player=new MediaPlayer();
-            player.setDisplay(holder);
-            player.setDataSource(this,Uri.parse("android.resource://"+getPackageName()+"/"+R.raw.intro_splash));
-            player.setOnPreparedListener(mp->{
-                try{
-                    mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
-                    handler.removeCallbacks(fallback);
-                    // 動画の実時間＋余裕まで待つ。動画本体を途中で切らない。
-                    long finishGuard=Math.max(120000L,mp.getDuration()+3000L);
-                    handler.postDelayed(fallback,finishGuard);
-                    mp.start();
-                }catch(Throwable error){openMain();}
-            });
-            player.setOnCompletionListener(mp->openMain());
-            player.setOnErrorListener((mp,what,extra)->{openMain();return true;});
-            player.prepareAsync();
-        }catch(Throwable error){openMain();}
+    private void startUnitySplashAnimation() {
+        // 1) ゆっくりフェードイン (1000ms)
+        logoView.animate()
+                .alpha(1f)
+                .scaleX(1.0f)
+                .scaleY(1.0f)
+                .setDuration(1000)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .withEndAction(() -> {
+                    if (opened) return;
+                    // 2) 700ms ほど静止してロゴを見せる
+                    handler.postDelayed(() -> {
+                        if (opened) return;
+                        // 3) ゆっくりフェードアウト (700ms)
+                        logoView.animate()
+                                .alpha(0f)
+                                .scaleX(1.04f)
+                                .scaleY(1.04f)
+                                .setDuration(700)
+                                .setInterpolator(new AccelerateDecelerateInterpolator())
+                                .withEndAction(this::openMain)
+                                .start();
+                    }, 700);
+                })
+                .start();
+
+        // 5秒以内に確実にメイン画面へ開くためのセーフティタイマー (3秒)
+        handler.postDelayed(this::openMain, 3000);
     }
-    @Override public void surfaceChanged(SurfaceHolder holder,int format,int width,int height){if(player!=null)player.setDisplay(holder);}
-    @Override public void surfaceDestroyed(SurfaceHolder holder){releasePlayer();}
-    private void releasePlayer(){if(player!=null){try{if(player.isPlaying())player.stop();}catch(Throwable ignored){}try{player.reset();}catch(Throwable ignored){}try{player.release();}catch(Throwable ignored){}player=null;}}
-    private void openMain(){if(opened)return;opened=true;handler.removeCallbacks(fallback);releasePlayer();try{startActivity(new Intent(this,MainActivity.class));}catch(Throwable ignored){}finish();}
+
+    private void openMain() {
+        if (opened) return;
+        opened = true;
+        handler.removeCallbacksAndMessages(null);
+        try {
+            startActivity(new Intent(this, MainActivity.class));
+            // 滑らかなクロスフェード切り替え
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        } catch (Throwable ignored) {}
+        finish();
+    }
 }
