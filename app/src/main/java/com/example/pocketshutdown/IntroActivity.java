@@ -26,8 +26,8 @@ public class IntroActivity extends Activity {
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
             FrameLayout root = new FrameLayout(this);
-            // 画像の地の色（(255, 255, 251)）と画面全体を完全に一致させてシームレスに表示
-            root.setBackgroundColor(Color.rgb(255, 255, 251));
+            // メイン画面と同じディープネイビー背景色でロゴエンブレムだけを美しく浮かび上がらせる
+            root.setBackgroundColor(Color.rgb(9, 11, 22));
 
             logoView = new ImageView(this);
             logoView.setImageResource(R.drawable.intro_logo);
