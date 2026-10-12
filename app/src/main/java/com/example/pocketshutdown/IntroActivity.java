@@ -28,6 +28,7 @@ public class IntroActivity extends Activity implements SurfaceHolder.Callback {
             surfaceView=new SurfaceView(this);
             surfaceView.setKeepScreenOn(true);
             surfaceView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+            surfaceView.setOnClickListener(v -> openMain());
             surfaceView.getHolder().addCallback(this);
             setContentView(surfaceView);
             // 再生時間を取得する前に失敗した場合だけ働く長めの保険タイマー。
