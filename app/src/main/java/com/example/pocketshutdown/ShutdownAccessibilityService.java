@@ -12,8 +12,6 @@ import android.media.AudioManager;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.KeyEvent;
@@ -27,13 +25,20 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     public static final String PREFS = "settings";
     public static final String DIAG_PREFS = "diagnostics";
 
-    // Bluetooth通信の伝送遅延・実機での操作感を考慮したダブルタップ許容時間（ミリ秒）
-    private static final long DOUBLE_TAP_MS = 650;
+    // ユーザー指定: イヤホンの操作（再生/停止等）を3秒以内に連続で行うと画面OFF
+    public static final long MEDIA_MULTI_TAP_WINDOW_MS = 3000; // 3秒以内
+    // 音量ボタンのダブルタップ許容時間
+    public static final long VOLUME_DOUBLE_TAP_MS = 650;
 
     private long lastVolumeUpTime = 0;
     private long lastVolumeDownTime = 0;
-    private long lastMediaTime = 0;
-    private int lastMediaCode = -1;
+
+    // メディア操作の連続判定
+    private long lastMediaActionTime = 0;
+
+    // AccessibilityServiceとMediaSessionの二重受信防止用
+    private long lastDuplicateEventTime = 0;
+    private int lastDuplicateEventCode = -1;
 
     private MediaSession mediaSession;
 
@@ -73,7 +78,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
             mediaSession.setPlaybackState(new PlaybackState.Builder()
                     .setState(PlaybackState.STATE_PLAYING, 0, 1.0f)
-                    .setActions(PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS)
+                    .setActions(PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS)
                     .build());
             mediaSession.setActive(true);
         } catch (Exception ignored) {}
@@ -107,13 +112,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         int code = event.getKeyCode();
 
         boolean isVolumeKey = (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN);
-        boolean isMediaKey = (code == KeyEvent.KEYCODE_HEADSETHOOK
-                || code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-                || code == KeyEvent.KEYCODE_MEDIA_PLAY
-                || code == KeyEvent.KEYCODE_MEDIA_PAUSE
-                || code == KeyEvent.KEYCODE_MEDIA_STOP
-                || code == KeyEvent.KEYCODE_MEDIA_NEXT
-                || code == KeyEvent.KEYCODE_MEDIA_PREVIOUS);
+        boolean isMediaKey = isMediaKeyCode(code);
 
         if (!isVolumeKey && !isMediaKey) {
             return false;
@@ -122,11 +121,30 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         return handleKeyInput(code, "Accessibility");
     }
 
+    private boolean isMediaKeyCode(int code) {
+        return (code == KeyEvent.KEYCODE_HEADSETHOOK
+                || code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                || code == KeyEvent.KEYCODE_MEDIA_PLAY
+                || code == KeyEvent.KEYCODE_MEDIA_PAUSE
+                || code == KeyEvent.KEYCODE_MEDIA_STOP
+                || code == KeyEvent.KEYCODE_MEDIA_NEXT
+                || code == KeyEvent.KEYCODE_MEDIA_PREVIOUS);
+    }
+
     private boolean handleKeyInput(int code, String source) {
+        long now = System.currentTimeMillis();
+
+        // 120ms以内の同一キー重複検知（AccessibilityとMediaSessionの二重受信）を防止
+        if (code == lastDuplicateEventCode && (now - lastDuplicateEventTime < 120)) {
+            return false;
+        }
+        lastDuplicateEventTime = now;
+        lastDuplicateEventCode = code;
+
         SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
         boolean enabled = sp.getBoolean("autoClick", true);
         if (!enabled) {
-            recordKey(getKeyName(code) + " [機能OFF]", code, source);
+            recordKey(getKeyName(code) + " [機能OFF]", code, source, false);
             return false;
         }
 
@@ -135,28 +153,28 @@ public class ShutdownAccessibilityService extends AccessibilityService {
 
         boolean isVolume = (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN);
         if (isVolume && earphoneOnly && !earphoneConnected) {
-            recordKey(getKeyName(code) + " [イヤホン未接続のため除外]", code, source);
+            recordKey(getKeyName(code) + " [イヤホン未接続のため除外]", code, source, false);
             return false;
         }
 
-        long now = System.currentTimeMillis();
         String keyName = getKeyName(code);
-        recordKey(keyName, code, source);
 
-        // 1) 音量キーの2回押し判定
+        // 1) 音量キーのダブルタップ判定 (UPまたはDOWN)
         if (code == KeyEvent.KEYCODE_VOLUME_UP) {
-            if (now - lastVolumeUpTime <= DOUBLE_TAP_MS) {
+            recordKey(keyName, code, source, false);
+            if (now - lastVolumeUpTime <= VOLUME_DOUBLE_TAP_MS) {
                 lastVolumeUpTime = 0;
-                triggerLock("音量UP ダブルタップ (" + source + ")");
+                triggerLock("音量UP 2回押し (" + source + ")");
                 return true;
             } else {
                 lastVolumeUpTime = now;
                 return false;
             }
         } else if (code == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (now - lastVolumeDownTime <= DOUBLE_TAP_MS) {
+            recordKey(keyName, code, source, false);
+            if (now - lastVolumeDownTime <= VOLUME_DOUBLE_TAP_MS) {
                 lastVolumeDownTime = 0;
-                triggerLock("音量DOWN ダブルタップ (" + source + ")");
+                triggerLock("音量DOWN 2回押し (" + source + ")");
                 return true;
             } else {
                 lastVolumeDownTime = now;
@@ -164,24 +182,26 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             }
         }
 
-        // 2) イヤホン側がダブルタップ/トリプルタップを「曲送り/曲戻し」として送信する機種へのサポート
-        boolean triggerOnNextPrev = sp.getBoolean("triggerOnNextPrev", true);
-        if (triggerOnNextPrev && (code == KeyEvent.KEYCODE_MEDIA_NEXT || code == KeyEvent.KEYCODE_MEDIA_PREVIOUS)) {
-            triggerLock(keyName + " 操作 (" + source + ")");
-            return true;
+        // 2) イヤホン操作キーの判定:
+        // イヤホン側で「2回連続押して再生・停止する機能」を利用し、
+        // その操作を3秒以内に連続で行うと画面OFF
+        if (isMediaKeyCode(code)) {
+            long diff = now - lastMediaActionTime;
+            if (lastMediaActionTime > 0 && diff <= MEDIA_MULTI_TAP_WINDOW_MS && diff >= 200) {
+                // 3秒以内に2回目の操作を受信 -> 画面OFF実行！
+                lastMediaActionTime = 0;
+                recordKey(keyName + " [2回目検知: 画面OFF実行]", code, source, true);
+                triggerLock("ダブルタップ 3秒以内連続 (" + diff + "ms)");
+                return true;
+            } else {
+                // 1回目の操作を受信 -> タイマー開始
+                lastMediaActionTime = now;
+                recordKey(keyName + " [1回目: 3秒以内に再度操作で画面OFF]", code, source, false);
+                return false;
+            }
         }
 
-        // 3) HEADSETHOOK（イヤホンボタン）やメディア再生停止キーのダブルタップ判定
-        if (code == lastMediaCode && (now - lastMediaTime <= DOUBLE_TAP_MS)) {
-            lastMediaCode = -1;
-            lastMediaTime = 0;
-            triggerLock(keyName + " ダブルタップ (" + source + ")");
-            return true;
-        } else {
-            lastMediaCode = code;
-            lastMediaTime = now;
-            return false;
-        }
+        return false;
     }
 
     private void triggerLock(String reason) {
@@ -211,12 +231,13 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         } catch (Exception ignored) {}
     }
 
-    private void recordKey(String name, int code, String source) {
+    private void recordKey(String name, int code, String source, boolean triggered) {
         try {
             getSharedPreferences(DIAG_PREFS, MODE_PRIVATE).edit()
                     .putString("last_key_name", name + " (" + code + ")")
                     .putString("last_key_source", source)
                     .putLong("last_key_time", System.currentTimeMillis())
+                    .putBoolean("last_key_triggered", triggered)
                     .apply();
         } catch (Exception ignored) {}
     }
@@ -281,7 +302,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         switch (code) {
             case KeyEvent.KEYCODE_VOLUME_UP: return "音量UP";
             case KeyEvent.KEYCODE_VOLUME_DOWN: return "音量DOWN";
-            case KeyEvent.KEYCODE_HEADSETHOOK: return "イヤホン操作ボタン (Hook)";
+            case KeyEvent.KEYCODE_HEADSETHOOK: return "イヤホンボタン (Hook)";
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: return "再生/一時停止";
             case KeyEvent.KEYCODE_MEDIA_PLAY: return "再生";
             case KeyEvent.KEYCODE_MEDIA_PAUSE: return "一時停止";
