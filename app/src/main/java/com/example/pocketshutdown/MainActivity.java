@@ -105,7 +105,7 @@ public class MainActivity extends Activity {
         head.setTypeface(null, 1);
         root.addView(head, new LinearLayout.LayoutParams(-1, dp(70)));
 
-        TextView sub = text("イヤホンのボタンや音量ボタンを\n素早く2回押すだけで画面ロック", 14, 0xffa9a8bc);
+        TextView sub = text("イヤホンの再生/停止（ダブルタップ）を\n3秒以内に連続で行うと画面ロック", 14, 0xffa9a8bc);
         sub.setGravity(Gravity.CENTER);
         root.addView(sub, new LinearLayout.LayoutParams(-1, dp(46)));
 
@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
         statusCard.setPadding(dp(16), dp(14), dp(16), dp(14));
         statusCard.setBackground(bg(0xff15172a, 18));
 
-        status = text("●  サービス未接続", 14, 0xffffb86b);
+        status = text("●  ユーザー補助サービス未接続", 14, 0xffffb86b);
         status.setGravity(Gravity.CENTER);
         statusCard.addView(status, new LinearLayout.LayoutParams(-1, dp(28)));
 
@@ -133,7 +133,6 @@ public class MainActivity extends Activity {
 
         root.addView(statusCard, new LinearLayout.LayoutParams(-1, -2));
 
-        // 余白
         View space1 = new View(this);
         root.addView(space1, new LinearLayout.LayoutParams(-1, dp(14)));
 
@@ -162,10 +161,10 @@ public class MainActivity extends Activity {
         root.addView(space3, new LinearLayout.LayoutParams(-1, dp(16)));
 
         // 設定スイッチ項目群
-        addSwitchRow(root, "イヤホン操作で画面OFF", "autoClick", true, "メイン機能を有効にします");
+        addSwitchRow(root, "イヤホン操作で画面OFF", "autoClick", true, "メイン機能: 3秒以内の連続操作で画面OFF");
+        addSwitchRow(root, "音量ボタン2回押しでも画面OFF", "volumeDoubleTap", true, "音量UP/DOWNキーの素早い2回押しでもロック");
         addSwitchRow(root, "イヤホン接続中のみ有効", "earphoneOnly", true, "OFFにするとスマホ本体の音量キーでも画面OFF可能");
-        addSwitchRow(root, "曲送り(Next/Prev)操作でも画面OFF", "triggerOnNextPrev", true, "イヤホン側でダブルタップを曲送りにする機種に対応");
-        addSwitchRow(root, "画面OFF時に振動(バイブ)", "vibrate", true, "ロック成功時にポケットの中で触覚通知");
+        addSwitchRow(root, "画面OFF時に振動(バイブ)", "vibrate", true, "ロック成功時に本体が短く振動します");
 
         View space4 = new View(this);
         root.addView(space4, new LinearLayout.LayoutParams(-1, dp(12)));
@@ -175,7 +174,7 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         root.addView(terms, new LinearLayout.LayoutParams(-1, dp(34)));
 
-        updateStatus = text("最新バージョン v1.6.0", 11, 0xff77768a);
+        updateStatus = text("最新バージョン v1.7.0", 11, 0xff77768a);
         updateStatus.setGravity(Gravity.CENTER);
         root.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(26)));
 
@@ -270,7 +269,6 @@ public class MainActivity extends Activity {
                 c.drawCircle(cx, cy, d * (.20f + t * .24f), p);
             }
 
-            // ヘッドホン・アイコン描画
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(dpStatic(getContext(), 5));
             p.setColor(0xff8b7cff);
@@ -279,7 +277,6 @@ public class MainActivity extends Activity {
             c.drawLine(cx - 38, cy + 8, cx - 38, cy + 30, p);
             c.drawLine(cx + 38, cy + 8, cx + 38, cy + 30, p);
 
-            // ロック・電源マーク描画
             p.setColor(Color.WHITE);
             p.setStrokeWidth(dpStatic(getContext(), 3.5f));
             c.drawLine(cx, cy - 38, cx, cy - 6, p);
@@ -303,10 +300,11 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("使い方")
                 .setMessage("【画面OFFにする方法】\n\n"
-                        + "1. イヤホンのボタン（中央ボタン／再生ボタン）または音量ボタンを素早く2回押します。\n\n"
-                        + "2. AirPodsや多くのワイヤレスイヤホンで、2回タップで『次の曲』を送る設定になっている場合でも、そのまま画面OFFが作動します。\n\n"
-                        + "3. 画面がOFFになると本体が短く振動します。\n\n"
-                        + "※ ユーザー補助サービスを必ずONにしてください。")
+                        + "1. イヤホンのボタンを2回連続押して音楽を再生/一時停止する操作を、3秒以内に連続で2回行います。\n"
+                        + "（ポンポン … ポンポン と3秒以内に連続操作）\n\n"
+                        + "2. 3秒以内に2回目の操作を受信すると、画面がOFFになり端末がロックされます。\n\n"
+                        + "3. ロック成功時に本体が短く振動（バイブレーション）します。\n\n"
+                        + "※ 普段1回だけダブルタップして音楽を再生・停止したい時は、3秒以内に再度押さなければ画面は消えません。")
                 .setPositiveButton("OK", null)
                 .show();
     }
@@ -459,8 +457,8 @@ public class MainActivity extends Activity {
         try {
             String[] x = a.split("\\."), y = b.split("\\.");
             for (int i = 0; i < Math.max(x.length, y.length); i++) {
-                int p = i < x.length ? Integer.parseInt(x[i]) : 0;
-                int q = i < y.length ? Integer.parseInt(y[i]) : 0;
+                int p = i < x.length ? Integer.parseInt(x[i]): 0;
+                int q = i < y.length ? Integer.parseInt(y[i]): 0;
                 if (p != q) return p > q ? 1 : -1;
             }
         } catch (Exception ignored) {}
