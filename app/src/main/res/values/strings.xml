@@ -1,3 +1,3 @@
 <resources>
-    <string name="accessibility_description">Bluetoothイヤホンのメディア操作をダブルタップして画面をOFF・ロックします。</string>
+    <string name="accessibility_description">イヤホンのボタン操作や音量ボタンを素早く2回押して画面をOFF・ロックします。</string>
 </resources>
