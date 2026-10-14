@@ -47,10 +47,9 @@ public class MainActivity extends Activity {
     TextView updateStatus;
     Dialog updateDialog;
     Dialog downloadDialog;
-    ProgressBar downloadBar;
+    SmoothProgressBar downloadBar;
     TextView downloadPercentText;
     TextView downloadSizeText;
-    Dialog accessibilityGate;
 
     @Override
     public void onCreate(Bundle b) {
@@ -173,9 +172,13 @@ public class MainActivity extends Activity {
         testLock.setAllCaps(false);
         testLock.setBackground(bg(0xff162822, 16));
         testLock.setOnClickListener(v -> {
+            if (!ShutdownAccessibilityService.isEnabled(this)) {
+                showAccessibilityRequiredDialog();
+                return;
+            }
             boolean done = ShutdownAccessibilityService.triggerLockManual(this);
             if (!done) {
-                Toast.makeText(this, "ユーザー補助が有効になっていません。先に『ユーザー補助を設定』からONにしてください。", Toast.LENGTH_LONG).show();
+                showAccessibilityRequiredDialog();
             }
         });
         root.addView(testLock, new LinearLayout.LayoutParams(-1, dp(44)));
@@ -197,7 +200,7 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         root.addView(terms, new LinearLayout.LayoutParams(-1, dp(34)));
 
-        updateStatus = text("最新バージョン v2.1.0", 11, 0xff77768a);
+        updateStatus = text("最新バージョン v2.2.0", 11, 0xff77768a);
         updateStatus.setGravity(Gravity.CENTER);
         root.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(26)));
 
@@ -221,7 +224,6 @@ public class MainActivity extends Activity {
         refreshEarphoneStatus();
         refreshDiagnostics();
 
-        scroll.postDelayed(() -> continueAfterAccessibility(scroll), 350);
         scroll.postDelayed(this::checkForUpdate, 800);
     }
 
@@ -239,8 +241,12 @@ public class MainActivity extends Activity {
 
         Switch sw = new Switch(this);
         sw.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(prefKey, defaultVal));
-        sw.setOnCheckedChangeListener((btn, checked) ->
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(prefKey, checked).apply());
+        sw.setOnCheckedChangeListener((btn, checked) -> {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(prefKey, checked).apply();
+            if (checked && !ShutdownAccessibilityService.isEnabled(this)) {
+                showAccessibilityRequiredDialog();
+            }
+        });
         row.addView(sw);
         box.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
@@ -307,6 +313,203 @@ public class MainActivity extends Activity {
         }
 
         static int dpStatic(android.content.Context c, float n) {
+            return (int)(n * c.getResources().getDisplayMetrics().density + .5f);
+        }
+    }
+
+    static class DownloadAnimationView extends View {
+        final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final RectF r = new RectF();
+        float phase;
+        ValueAnimator anim;
+
+        DownloadAnimationView(Context c) {
+            super(c);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStrokeJoin(Paint.Join.ROUND);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            anim = ValueAnimator.ofFloat(0f, 1f);
+            anim.setDuration(1600);
+            anim.setRepeatCount(ValueAnimator.INFINITE);
+            anim.addUpdateListener(v -> {
+                phase = (float) v.getAnimatedValue();
+                invalidate();
+            });
+            anim.start();
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            if (anim != null) anim.cancel();
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            super.onDraw(c);
+            float cx = getWidth() / 2f;
+            float cy = getHeight() / 2f - dpStatic(getContext(), 4);
+
+            // 1. 背景のダークエメラルド・グロー円
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xff122b1d);
+            c.drawCircle(cx, cy, dpStatic(getContext(), 28), p);
+
+            // 2. 広がるパルス波紋 (2本)
+            for (int i = 0; i < 2; i++) {
+                float t = (phase + i * 0.5f) % 1.0f;
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(dpStatic(getContext(), 2));
+                p.setColor(Color.argb((int)(110 * (1f - t)), 34, 197, 94));
+                c.drawCircle(cx, cy, dpStatic(getContext(), 26 + t * 22), p);
+            }
+
+            // 3. 上から下へ降り注ぐ光のデータストリーム (パーティクル5本)
+            p.setStyle(Paint.Style.FILL);
+            float[] xOffsets = {-22f, -11f, 0f, 11f, 22f};
+            float[] speedOffsets = {0.1f, 0.5f, 0.75f, 0.3f, 0.9f};
+            for (int i = 0; i < 5; i++) {
+                float prg = (phase + speedOffsets[i]) % 1.0f;
+                float px = cx + dpStatic(getContext(), xOffsets[i]);
+                float py = cy - dpStatic(getContext(), 36) + prg * dpStatic(getContext(), 72);
+                int alpha = (int)(255 * Math.sin(prg * Math.PI));
+                p.setColor(Color.argb(Math.max(0, Math.min(255, alpha)), 134, 239, 172));
+                c.drawCircle(px, py, dpStatic(getContext(), 2.2f), p);
+            }
+
+            // 4. 受け皿トレイ (端末/受信台)
+            float trayY = cy + dpStatic(getContext(), 20);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(dpStatic(getContext(), 3));
+            p.setColor(0xff22c55e);
+            float trayW = dpStatic(getContext(), 20);
+            c.drawLine(cx - trayW, trayY, cx + trayW, trayY, p);
+            c.drawLine(cx - trayW, trayY - dpStatic(getContext(), 5), cx - trayW, trayY, p);
+            c.drawLine(cx + trayW, trayY - dpStatic(getContext(), 5), cx + trayW, trayY, p);
+
+            // 5. 浮遊するダウンロードアロー (⬇)
+            float bounce = (float) Math.sin(phase * Math.PI * 2) * dpStatic(getContext(), 4);
+            float arrowY = cy + bounce;
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(dpStatic(getContext(), 4.5f));
+            p.setColor(0xff4ade80);
+
+            // 軸
+            c.drawLine(cx, arrowY - dpStatic(getContext(), 14), cx, arrowY + dpStatic(getContext(), 7), p);
+            // 傘 (左右の羽)
+            float wing = dpStatic(getContext(), 9);
+            c.drawLine(cx - wing, arrowY - dpStatic(getContext(), 2), cx, arrowY + dpStatic(getContext(), 7), p);
+            c.drawLine(cx + wing, arrowY - dpStatic(getContext(), 2), cx, arrowY + dpStatic(getContext(), 7), p);
+        }
+
+        static int dpStatic(Context c, float n) {
+            return (int)(n * c.getResources().getDisplayMetrics().density + .5f);
+        }
+    }
+
+    static class SmoothProgressBar extends View {
+        final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final RectF r = new RectF();
+        float currentProgress = 0f; // 0.0f ~ 100.0f
+        float targetProgress = 0f;
+        ValueAnimator progAnim;
+        ValueAnimator shimmerAnim;
+        float shimmerPhase = 0f;
+
+        SmoothProgressBar(Context c) {
+            super(c);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            shimmerAnim = ValueAnimator.ofFloat(0f, 1f);
+            shimmerAnim.setDuration(1300);
+            shimmerAnim.setRepeatCount(ValueAnimator.INFINITE);
+            shimmerAnim.addUpdateListener(v -> {
+                shimmerPhase = (float) v.getAnimatedValue();
+                invalidate();
+            });
+            shimmerAnim.start();
+        }
+
+        public void setProgressSmooth(float target) {
+            if (target < 0) target = 0;
+            if (target > 100) target = 100;
+            targetProgress = target;
+
+            if (progAnim != null) {
+                progAnim.cancel();
+            }
+            progAnim = ValueAnimator.ofFloat(currentProgress, targetProgress);
+            progAnim.setDuration(140);
+            progAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            progAnim.addUpdateListener(v -> {
+                currentProgress = (float) v.getAnimatedValue();
+                invalidate();
+            });
+            progAnim.start();
+        }
+
+        public float getCurrentProgress() {
+            return currentProgress;
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            if (progAnim != null) progAnim.cancel();
+            if (shimmerAnim != null) shimmerAnim.cancel();
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            super.onDraw(c);
+            float w = getWidth();
+            float h = getHeight();
+            if (w <= 0 || h <= 0) return;
+            float radius = h / 2f;
+
+            // 1. 暗緑色のトラック背景
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xff122319);
+            r.set(0, 0, w, h);
+            c.drawRoundRect(r, radius, radius, p);
+
+            // トラックの枠線
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(dpStatic(getContext(), 1));
+            p.setColor(0xff1c3e2b);
+            c.drawRoundRect(r, radius, radius, p);
+
+            // 2. 進行バー (エメラルドグリーン)
+            float fillW = w * (currentProgress / 100f);
+            if (fillW > 0) {
+                c.save();
+                r.set(0, 0, w, h);
+                android.graphics.Path clip = new android.graphics.Path();
+                clip.addRoundRect(r, radius, radius, android.graphics.Path.Direction.CW);
+                c.clipPath(clip);
+
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(0xff22c55e);
+                r.set(0, 0, fillW, h);
+                c.drawRect(r, p);
+
+                // 3. 右方向へ滑らかに流れる光沢ハイライト (シマーアニメーション)
+                float shimmerW = dpStatic(getContext(), 50);
+                float shimmerX = -shimmerW + shimmerPhase * (fillW + shimmerW * 2);
+                android.graphics.LinearGradient gradient = new android.graphics.LinearGradient(
+                        shimmerX, 0, shimmerX + shimmerW, 0,
+                        new int[]{0x00ffffff, 0x66ffffff, 0x00ffffff},
+                        null, android.graphics.Shader.TileMode.CLAMP
+                );
+                p.setShader(gradient);
+                r.set(shimmerX, 0, shimmerX + shimmerW, h);
+                c.drawRect(r, p);
+                p.setShader(null);
+
+                c.restore();
+            }
+        }
+
+        static int dpStatic(Context c, float n) {
             return (int)(n * c.getResources().getDisplayMetrics().density + .5f);
         }
     }
@@ -493,27 +696,32 @@ public class MainActivity extends Activity {
         return String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
-    void updateDownloadProgress(int percent, long currentBytes, long totalBytes) {
+    String formatSpeed(long bytesPerSec) {
+        if (bytesPerSec <= 0) return "";
+        if (bytesPerSec < 1024L * 1024L) return (bytesPerSec / 1024L) + " KB/s";
+        return String.format(java.util.Locale.US, "%.1f MB/s", bytesPerSec / (1024.0 * 1024.0));
+    }
+
+    void updateDownloadProgress(float percent, long currentBytes, long totalBytes, long speed) {
         if (downloadBar != null) {
             if (percent >= 0) {
-                downloadBar.setIndeterminate(false);
-                downloadBar.setProgress(percent);
-            } else {
-                downloadBar.setIndeterminate(true);
+                downloadBar.setProgressSmooth(percent);
             }
         }
         if (downloadPercentText != null) {
             if (percent >= 0) {
-                downloadPercentText.setText(percent + "%");
+                downloadPercentText.setText(String.format(java.util.Locale.US, "%.1f%%", percent));
             } else {
                 downloadPercentText.setText("--- %");
             }
         }
         if (downloadSizeText != null) {
+            String spdStr = formatSpeed(speed);
+            String prefix = spdStr.isEmpty() ? "" : spdStr + "  •  ";
             if (totalBytes > 0) {
-                downloadSizeText.setText(formatFileSize(currentBytes) + " / " + formatFileSize(totalBytes));
+                downloadSizeText.setText(prefix + formatFileSize(currentBytes) + " / " + formatFileSize(totalBytes));
             } else {
-                downloadSizeText.setText(formatFileSize(currentBytes));
+                downloadSizeText.setText(prefix + formatFileSize(currentBytes));
             }
         }
     }
@@ -536,28 +744,40 @@ public class MainActivity extends Activity {
 
                 InputStream in = c.getInputStream();
                 FileOutputStream out = new FileOutputStream(apk);
-                byte[] buf = new byte[8192];
+                byte[] buf = new byte[16384];
                 int n;
                 long downloaded = 0;
                 long lastUpdate = 0;
+                long speedLastBytes = 0;
+                long speedLastTime = System.currentTimeMillis();
+                long currentSpeed = 0;
 
                 while ((n = in.read(buf)) != -1) {
                     out.write(buf, 0, n);
                     downloaded += n;
                     long now = System.currentTimeMillis();
-                    if (now - lastUpdate > 35 || (totalBytes > 0 && downloaded >= totalBytes)) {
+
+                    if (now - speedLastTime >= 250) {
+                        currentSpeed = (downloaded - speedLastBytes) * 1000 / Math.max(1, (now - speedLastTime));
+                        speedLastBytes = downloaded;
+                        speedLastTime = now;
+                    }
+
+                    if (now - lastUpdate > 16 || (totalBytes > 0 && downloaded >= totalBytes)) {
                         lastUpdate = now;
-                        final int percent = totalBytes > 0 ? (int)((downloaded * 100) / totalBytes) : -1;
+                        final float percent = totalBytes > 0 ? ((float) downloaded * 100f / (float) totalBytes) : -1f;
                         final long cur = downloaded;
-                        runOnUiThread(() -> updateDownloadProgress(percent, cur, totalBytes));
+                        final long spd = currentSpeed;
+                        runOnUiThread(() -> updateDownloadProgress(percent, cur, totalBytes, spd));
                     }
                 }
                 in.close();
                 out.close();
 
                 final long finalTotal = totalBytes > 0 ? totalBytes : downloaded;
-                runOnUiThread(() -> updateDownloadProgress(100, finalTotal, finalTotal));
-                Thread.sleep(250);
+                final long finalSpd = currentSpeed;
+                runOnUiThread(() -> updateDownloadProgress(100f, finalTotal, finalTotal, finalSpd));
+                Thread.sleep(300);
 
                 runOnUiThread(() -> {
                     finishDownloadLoading();
@@ -577,55 +797,40 @@ public class MainActivity extends Activity {
         if (downloadDialog != null && downloadDialog.isShowing()) return;
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(28), dp(26), dp(28), dp(24));
+        box.setPadding(dp(26), dp(22), dp(26), dp(22));
         box.setBackground(updateCard());
 
         TextView over = text("POCKET LOCK  /  INSTALL", 11, 0xff8b7cff);
         over.setLetterSpacing(.12f);
-        box.addView(over, new LinearLayout.LayoutParams(-1, dp(24)));
+        box.addView(over, new LinearLayout.LayoutParams(-1, dp(22)));
 
-        TextView title = text("アップデートをダウンロード中…", 17, Color.WHITE);
+        DownloadAnimationView animView = new DownloadAnimationView(this);
+        box.addView(animView, new LinearLayout.LayoutParams(-1, dp(92)));
+
+        TextView title = text("最新アップデートをダウンロード中…", 16, Color.WHITE);
         title.setTypeface(null, 1);
-        box.addView(title, new LinearLayout.LayoutParams(-1, dp(36)));
+        title.setGravity(Gravity.CENTER);
+        box.addView(title, new LinearLayout.LayoutParams(-1, dp(30)));
 
-        // ％表示 (大きく見やすい緑色)
-        downloadPercentText = text("0%", 28, 0xff22c55e);
+        downloadPercentText = text("0.0%", 28, 0xff22c55e);
         downloadPercentText.setTypeface(null, 1);
         downloadPercentText.setGravity(Gravity.CENTER);
-        box.addView(downloadPercentText, new LinearLayout.LayoutParams(-1, dp(44)));
+        box.addView(downloadPercentText, new LinearLayout.LayoutParams(-1, dp(40)));
 
-        // 緑色の進行バー
-        downloadBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        downloadBar.setMax(100);
-        downloadBar.setProgress(0);
-        downloadBar.setIndeterminate(false);
+        downloadBar = new SmoothProgressBar(this);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(-1, dp(16));
+        barLp.topMargin = dp(4);
+        barLp.bottomMargin = dp(4);
+        box.addView(downloadBar, barLp);
 
-        GradientDrawable bgTrack = new GradientDrawable();
-        bgTrack.setColor(0xff13261b); // 暗緑色のトラック背景
-        bgTrack.setCornerRadius(dp(6));
-
-        GradientDrawable progressFill = new GradientDrawable();
-        progressFill.setColor(0xff22c55e); // 鮮やかな緑色
-        progressFill.setCornerRadius(dp(6));
-        ClipDrawable clipProgress = new ClipDrawable(progressFill, Gravity.LEFT, ClipDrawable.HORIZONTAL);
-
-        LayerDrawable layerDrawable = new LayerDrawable(new Drawable[]{bgTrack, clipProgress});
-        layerDrawable.setId(0, android.R.id.background);
-        layerDrawable.setId(1, android.R.id.progress);
-        downloadBar.setProgressDrawable(layerDrawable);
-
-        box.addView(downloadBar, new LinearLayout.LayoutParams(-1, dp(14)));
-
-        // サイズ表示 (例: 120 KB / 207 KB)
         downloadSizeText = text("0 KB / ---", 12, 0xffa9a8bc);
-        downloadSizeText.setGravity(Gravity.RIGHT);
-        downloadSizeText.setPadding(0, dp(6), 0, 0);
+        downloadSizeText.setGravity(Gravity.CENTER);
         box.addView(downloadSizeText, new LinearLayout.LayoutParams(-1, dp(24)));
 
-        TextView sub = text("この画面を閉じずにお待ちください", 12, 0xff77768a);
+        TextView sub = text("この画面を閉じずにお待ちください", 11, 0xff77768a);
         sub.setGravity(Gravity.CENTER);
-        sub.setPadding(0, dp(8), 0, 0);
-        box.addView(sub, new LinearLayout.LayoutParams(-1, dp(30)));
+        sub.setPadding(0, dp(6), 0, 0);
+        box.addView(sub, new LinearLayout.LayoutParams(-1, dp(26)));
 
         downloadDialog = new Dialog(this);
         downloadDialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
@@ -661,9 +866,6 @@ public class MainActivity extends Activity {
         refresh();
         refreshEarphoneStatus();
         refreshDiagnostics();
-        if (getWindow().getDecorView().getRootView() != null) {
-            getWindow().getDecorView().postDelayed(() -> continueAfterAccessibility(null), 250);
-        }
     }
 
     void refreshDiagnostics() {
@@ -701,26 +903,13 @@ public class MainActivity extends Activity {
         }
     }
 
-    void continueAfterAccessibility(View root) {
-        if (!ShutdownAccessibilityService.isEnabled(this)) {
-            showAccessibilityGate();
-            return;
-        }
-        if (accessibilityGate != null && accessibilityGate.isShowing()) {
-            accessibilityGate.dismiss();
-        }
-    }
-
-    void showAccessibilityGate() {
-        if (accessibilityGate != null && accessibilityGate.isShowing()) return;
-        AlertDialog.Builder b = new AlertDialog.Builder(this);
-        b.setTitle("ユーザー補助を有効にしてください");
-        b.setMessage("このアプリは、イヤホンのボタンや音量キーをバックグラウンドで検知して画面をOFFにするためにユーザー補助サービスを使用します。\n\n有効にするまで機能しません。");
-        b.setPositiveButton("設定を開く", (d, w) -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        accessibilityGate = b.create();
-        accessibilityGate.setCancelable(false);
-        accessibilityGate.setCanceledOnTouchOutside(false);
-        accessibilityGate.show();
+    void showAccessibilityRequiredDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("ユーザー補助の許可が必要です")
+                .setMessage("画面をOFFにして端末をロックするには、Pocket Lockのユーザー補助サービスを有効にする必要があります。\n\n『設定を開く』をタップして、インストール済みのアプリから『Pocket Lock』をONにしてください。\n\n※設定がグレーアウトしている場合は、アプリ情報画面の右上『︙』メニューから『制限付き設定を許可』を行ってください。")
+                .setPositiveButton("設定を開く", (d, w) -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
+                .setNegativeButton("閉じる", null)
+                .show();
     }
 
     void refreshEarphoneStatus() {
