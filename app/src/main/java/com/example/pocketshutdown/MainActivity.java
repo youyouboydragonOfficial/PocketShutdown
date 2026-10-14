@@ -43,13 +43,13 @@ public class MainActivity extends Activity {
     TextView status;
     TextView earphoneStatus;
     TextView keyStatus;
-    TextView triggerStatus;
     TextView updateStatus;
     Dialog updateDialog;
     Dialog downloadDialog;
     SmoothProgressBar downloadBar;
     TextView downloadPercentText;
     TextView downloadSizeText;
+    final java.util.Map<String, Switch> switchMap = new java.util.HashMap<>();
 
     @Override
     public void onCreate(Bundle b) {
@@ -128,13 +128,9 @@ public class MainActivity extends Activity {
         earphoneStatus.setGravity(Gravity.CENTER);
         statusCard.addView(earphoneStatus, new LinearLayout.LayoutParams(-1, dp(26)));
 
-        keyStatus = text("キー診断: まだ入力を受信していません", 12, 0xff77768a);
+        keyStatus = text("キー入力: 未検知", 12, 0xff77768a);
         keyStatus.setGravity(Gravity.CENTER);
         statusCard.addView(keyStatus, new LinearLayout.LayoutParams(-1, dp(24)));
-
-        triggerStatus = text("動作履歴: ロック実行履歴なし", 11, 0xff5e5d70);
-        triggerStatus.setGravity(Gravity.CENTER);
-        statusCard.addView(triggerStatus, new LinearLayout.LayoutParams(-1, dp(22)));
 
         root.addView(statusCard, new LinearLayout.LayoutParams(-1, -2));
 
@@ -192,6 +188,66 @@ public class MainActivity extends Activity {
         addSwitchRow(root, "イヤホン接続中のみ有効", "earphoneOnly", true, "OFFにするとスマホ本体の音量キーでも画面OFF可能");
         addSwitchRow(root, "画面OFF時に振動(バイブ)", "vibrate", true, "ロック成功時に本体が短く振動します");
 
+        View spaceDanger = new View(this);
+        root.addView(spaceDanger, new LinearLayout.LayoutParams(-1, dp(14)));
+
+        // ⚠ 危険区域 (使わない時用の一括停止・リセット)
+        LinearLayout dangerCard = new LinearLayout(this);
+        dangerCard.setOrientation(LinearLayout.VERTICAL);
+        dangerCard.setPadding(dp(16), dp(14), dp(16), dp(14));
+        GradientDrawable dangerBg = bg(0xff1f1315, 16);
+        dangerBg.setStroke(dp(1), 0xff882025);
+        dangerCard.setBackground(dangerBg);
+
+        TextView dangerTitle = text("⚠ 危険区域 / DANGER ZONE", 12, 0xffef4444);
+        dangerTitle.setTypeface(null, 1);
+        dangerTitle.setLetterSpacing(.1f);
+        dangerCard.addView(dangerTitle, new LinearLayout.LayoutParams(-1, dp(22)));
+
+        TextView dangerDesc = text("使わない時は全設定をOFFにして、バックグラウンド待機を停止できます。", 11, 0xffb59a9e);
+        dangerDesc.setPadding(0, 0, 0, dp(10));
+        dangerCard.addView(dangerDesc, new LinearLayout.LayoutParams(-1, -2));
+
+        Button stopAllBtn = new Button(this);
+        stopAllBtn.setText("🛑 全設定をOFFにして完全停止");
+        stopAllBtn.setTextColor(Color.WHITE);
+        stopAllBtn.setTextSize(13);
+        stopAllBtn.setAllCaps(false);
+        stopAllBtn.setBackground(bg(0xff991b1b, 14));
+        stopAllBtn.setOnClickListener(v -> {
+            new AlertDialog.Builder(this)
+                    .setTitle("全機能を完全停止しますか？")
+                    .setMessage("イヤホン操作による画面OFFや音量キー操作など、本アプリの全設定をOFFにし、バックグラウンド監視を停止（休止状態）にします。\n\n再び使いたい時は『推奨設定に一括復元』をタップしてください。")
+                    .setPositiveButton("完全停止する", (dialog, which) -> {
+                        ShutdownAccessibilityService.stopAll(this);
+                        refreshSwitches();
+                        refresh();
+                        Toast.makeText(this, "全設定をOFFにし、停止しました", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("キャンセル", null)
+                    .show();
+        });
+        dangerCard.addView(stopAllBtn, new LinearLayout.LayoutParams(-1, dp(44)));
+
+        View spaceD1 = new View(this);
+        dangerCard.addView(spaceD1, new LinearLayout.LayoutParams(-1, dp(8)));
+
+        Button restoreBtn = new Button(this);
+        restoreBtn.setText("🔄 推奨設定に一括復元（再開）");
+        restoreBtn.setTextColor(0xffd9d5ff);
+        restoreBtn.setTextSize(12);
+        restoreBtn.setAllCaps(false);
+        restoreBtn.setBackground(bg(0xff242044, 14));
+        restoreBtn.setOnClickListener(v -> {
+            ShutdownAccessibilityService.restoreDefaults(this);
+            refreshSwitches();
+            refresh();
+            Toast.makeText(this, "推奨設定に復元しました", Toast.LENGTH_SHORT).show();
+        });
+        dangerCard.addView(restoreBtn, new LinearLayout.LayoutParams(-1, dp(40)));
+
+        root.addView(dangerCard, new LinearLayout.LayoutParams(-1, -2));
+
         View space4 = new View(this);
         root.addView(space4, new LinearLayout.LayoutParams(-1, dp(12)));
 
@@ -200,7 +256,7 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         root.addView(terms, new LinearLayout.LayoutParams(-1, dp(34)));
 
-        updateStatus = text("最新バージョン v2.2.0", 11, 0xff77768a);
+        updateStatus = text("最新バージョン v2.3.0", 11, 0xff77768a);
         updateStatus.setGravity(Gravity.CENTER);
         root.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(26)));
 
@@ -246,8 +302,10 @@ public class MainActivity extends Activity {
             if (checked && !ShutdownAccessibilityService.isEnabled(this)) {
                 showAccessibilityRequiredDialog();
             }
+            refresh();
         });
         row.addView(sw);
+        switchMap.put(prefKey, sw);
         box.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
         if (desc != null) {
@@ -260,6 +318,14 @@ public class MainActivity extends Activity {
 
         View sep = new View(this);
         parent.addView(sep, new LinearLayout.LayoutParams(-1, dp(8)));
+    }
+
+    void refreshSwitches() {
+        android.content.SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+        for (java.util.Map.Entry<String, Switch> entry : switchMap.entrySet()) {
+            boolean def = !entry.getKey().equals("earphoneOnly") || sp.getBoolean("earphoneOnly", true);
+            entry.getValue().setChecked(sp.getBoolean(entry.getKey(), def));
+        }
     }
 
     static class SignalAnimationView extends View {
@@ -516,9 +582,18 @@ public class MainActivity extends Activity {
 
     void refresh() {
         boolean on = ShutdownAccessibilityService.isEnabled(this);
+        boolean active = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("autoClick", true);
         if (status != null) {
-            status.setText(on ? "●  監視中 — 準備完了" : "●  ユーザー補助サービス未接続");
-            status.setTextColor(on ? 0xff74e0b0 : 0xffffb86b);
+            if (!on) {
+                status.setText("●  ユーザー補助サービス未接続");
+                status.setTextColor(0xffffb86b);
+            } else if (!active) {
+                status.setText("●  全機能停止中 (休止)");
+                status.setTextColor(0xffff6b6b);
+            } else {
+                status.setText("●  監視中 — 準備完了");
+                status.setTextColor(0xff74e0b0);
+            }
         }
     }
 
@@ -871,25 +946,12 @@ public class MainActivity extends Activity {
     void refreshDiagnostics() {
         if (keyStatus == null) return;
         android.content.SharedPreferences p = getSharedPreferences(DIAG_PREFS, MODE_PRIVATE);
-        long t = p.getLong("last_key_time", 0);
         String k = p.getString("last_key_name", "");
         String s = p.getString("last_key_source", "");
-        if (t == 0) {
-            keyStatus.setText("キー診断: まだキー入力を受信していません");
+        if (k == null || k.isEmpty()) {
+            keyStatus.setText("キー入力: 未検知");
         } else {
-            long sec = (System.currentTimeMillis() - t) / 1000;
-            keyStatus.setText("キー診断: " + k + " [" + s + "] • " + sec + "秒前");
-        }
-
-        if (triggerStatus != null) {
-            long tt = p.getLong("last_trigger_time", 0);
-            String tr = p.getString("last_trigger_reason", "");
-            if (tt == 0) {
-                triggerStatus.setText("動作履歴: ロック実行履歴なし");
-            } else {
-                long sec = (System.currentTimeMillis() - tt) / 1000;
-                triggerStatus.setText("動作履歴: " + tr + " • " + sec + "秒前");
-            }
+            keyStatus.setText("最新キー: " + k + (s != null && !s.isEmpty() ? " [" + s + "]" : ""));
         }
     }
 

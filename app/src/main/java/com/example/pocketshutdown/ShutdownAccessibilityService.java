@@ -45,9 +45,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     private int lastDuplicateEventCode = -1;
 
     private MediaSession mediaSession;
-    private AudioTrack silentTrack;
     private AudioManager audioManager;
-    private Object audioFocusRequestObj;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public static ShutdownAccessibilityService getInstance() {
@@ -73,7 +71,6 @@ public class ShutdownAccessibilityService extends AccessibilityService {
 
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         setupMediaSession();
-        setupSilentAudioTracker();
     }
 
     private void setupMediaSession() {
@@ -103,13 +100,16 @@ public class ShutdownAccessibilityService extends AccessibilityService {
                 }
             });
 
-            mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+            mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS);
+            // 端末の音楽プレイヤー（三本バー・イコライザー）を誤作動させないよう STATE_NONE (非再生) に設定
             mediaSession.setPlaybackState(new PlaybackState.Builder()
-                    .setState(PlaybackState.STATE_PLAYING, 0, 1.0f)
-                    .setActions(PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
-                            | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_STOP)
+                    .setState(PlaybackState.STATE_NONE, 0, 0f)
+                    .setActions(0)
                     .build());
-            mediaSession.setActive(true);
+
+            SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+            boolean enabled = sp.getBoolean("autoClick", true);
+            mediaSession.setActive(enabled);
 
             // AudioManagerへのレシーバー登録 (旧API互換)
             try {
@@ -120,90 +120,42 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         } catch (Exception ignored) {}
     }
 
-    /**
-     * 無音オーディオを極低負荷で維持し、OSに「このアプリが現在オーディオ再生中」と認識させる。
-     * これによりBluetoothイヤホンのメディアボタン（AVRCP）が100%確実に本アプリにルーティングされる。
-     */
-    private void setupSilentAudioTracker() {
-        try {
-            if (silentTrack != null) {
-                try { silentTrack.stop(); silentTrack.release(); } catch (Exception ignored) {}
-                silentTrack = null;
-            }
-
-            int sampleRate = 8000;
-            int bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
-            if (bufferSize <= 0) bufferSize = 1024;
-
-            AudioAttributes attrs = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build();
-
-            AudioFormat format = new AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .build();
-
-            silentTrack = new AudioTrack(attrs, format, bufferSize, AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE);
-            byte[] silence = new byte[bufferSize]; // 全部0 (完全無音)
-
-            requestAudioFocus();
-            silentTrack.play();
-
-            new Thread(() -> {
-                while (silentTrack != null && silentTrack.getState() == AudioTrack.STATE_INITIALIZED) {
-                    try {
-                        if (silentTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
-                            silentTrack.write(silence, 0, silence.length);
-                        }
-                        Thread.sleep(500); // 0.5秒おきに無音バッファ供給 (CPU負荷ほぼ0)
-                    } catch (Exception e) {
-                        break;
-                    }
-                }
-            }).start();
-
-        } catch (Exception ignored) {}
+    public void pauseService() {
+        if (mediaSession != null) {
+            try { mediaSession.setActive(false); } catch (Exception ignored) {}
+        }
+        lastMediaActionTime = 0;
+        lastVolumeUpTime = 0;
+        lastVolumeDownTime = 0;
     }
 
-    private void requestAudioFocus() {
-        if (audioManager == null) return;
-        try {
-            AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {
-                if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
-                    // 他アプリが再生開始した場合は譲る
-                    if (silentTrack != null) {
-                        try { silentTrack.pause(); } catch (Exception ignored) {}
-                    }
-                } else if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
-                    // 他アプリが停止したら復帰
-                    if (silentTrack != null) {
-                        try { silentTrack.play(); } catch (Exception ignored) {}
-                    }
-                    if (mediaSession != null) {
-                        mediaSession.setActive(true);
-                    }
-                }
-            };
+    public void resumeService() {
+        if (mediaSession != null) {
+            try { mediaSession.setActive(true); } catch (Exception ignored) {}
+        }
+    }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                AudioAttributes playbackAttributes = new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build();
-                AudioFocusRequest focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                        .setAudioAttributes(playbackAttributes)
-                        .setAcceptsDelayedFocusGain(true)
-                        .setOnAudioFocusChangeListener(focusListener)
-                        .build();
-                audioFocusRequestObj = focusRequest;
-                audioManager.requestAudioFocus(focusRequest);
-            } else {
-                audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
-            }
-        } catch (Exception ignored) {}
+    public static void stopAll(Context context) {
+        context.getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean("autoClick", false)
+                .putBoolean("volumeDoubleTap", false)
+                .putBoolean("vibrate", false)
+                .apply();
+        if (instance != null) {
+            instance.pauseService();
+        }
+    }
+
+    public static void restoreDefaults(Context context) {
+        context.getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean("autoClick", true)
+                .putBoolean("volumeDoubleTap", true)
+                .putBoolean("earphoneOnly", true)
+                .putBoolean("vibrate", true)
+                .apply();
+        if (instance != null) {
+            instance.resumeService();
+        }
     }
 
     @Override
@@ -215,10 +167,6 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     @Override
     public void onDestroy() {
         instance = null;
-        if (silentTrack != null) {
-            try { silentTrack.stop(); silentTrack.release(); } catch (Exception ignored) {}
-            silentTrack = null;
-        }
         if (mediaSession != null) {
             try { mediaSession.setActive(false); mediaSession.release(); } catch (Exception ignored) {}
             mediaSession = null;
