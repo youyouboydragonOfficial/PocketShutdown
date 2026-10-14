@@ -2,16 +2,23 @@ package com.example.pocketshutdown;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
+import android.media.AudioFocusRequest;
+import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.KeyEvent;
@@ -25,38 +32,48 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     public static final String PREFS = "settings";
     public static final String DIAG_PREFS = "diagnostics";
 
-    // ユーザー指定: イヤホンの操作（再生/停止等）を3秒以内に連続で行うと画面OFF
     public static final long MEDIA_MULTI_TAP_WINDOW_MS = 3000; // 3秒以内
-    // 音量ボタンのダブルタップ許容時間
     public static final long VOLUME_DOUBLE_TAP_MS = 650;
+
+    private static volatile ShutdownAccessibilityService instance;
 
     private long lastVolumeUpTime = 0;
     private long lastVolumeDownTime = 0;
-
-    // メディア操作の連続判定
     private long lastMediaActionTime = 0;
 
-    // AccessibilityServiceとMediaSessionの二重受信防止用
     private long lastDuplicateEventTime = 0;
     private int lastDuplicateEventCode = -1;
 
     private MediaSession mediaSession;
+    private AudioTrack silentTrack;
+    private AudioManager audioManager;
+    private Object audioFocusRequestObj;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    public static ShutdownAccessibilityService getInstance() {
+        return instance;
+    }
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        instance = this;
         try {
             AccessibilityServiceInfo info = getServiceInfo();
             if (info == null) {
                 info = new AccessibilityServiceInfo();
             }
+            info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
             info.flags |= AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
             info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+            info.flags |= AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
             info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC;
             setServiceInfo(info);
         } catch (Exception ignored) {}
 
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         setupMediaSession();
+        setupSilentAudioTracker();
     }
 
     private void setupMediaSession() {
@@ -65,22 +82,127 @@ public class ShutdownAccessibilityService extends AccessibilityService {
                 mediaSession.release();
             }
             mediaSession = new MediaSession(this, "PocketLockInput");
+
+            // MediaButtonReceiverとの連携
+            Intent mediaButtonIntent = new Intent(Intent.ACTION_MEDIA_BUTTON);
+            mediaButtonIntent.setClass(this, MediaButtonBroadcastReceiver.class);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, mediaButtonIntent,
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
+            mediaSession.setMediaButtonReceiver(pendingIntent);
+
             mediaSession.setCallback(new MediaSession.Callback() {
                 @Override
                 public boolean onMediaButtonEvent(Intent intent) {
-                    KeyEvent e = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
-                    if (e != null && e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                        return handleKeyInput(e.getKeyCode(), "MediaSession");
+                    if (intent != null) {
+                        KeyEvent e = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+                        if (e != null && e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                            return handleKeyInput(e.getKeyCode(), "MediaSession");
+                        }
                     }
                     return super.onMediaButtonEvent(intent);
                 }
             });
+
             mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
             mediaSession.setPlaybackState(new PlaybackState.Builder()
                     .setState(PlaybackState.STATE_PLAYING, 0, 1.0f)
-                    .setActions(PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS)
+                    .setActions(PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
+                            | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_STOP)
                     .build());
             mediaSession.setActive(true);
+
+            // AudioManagerへのレシーバー登録 (旧API互換)
+            try {
+                ComponentName component = new ComponentName(this, MediaButtonBroadcastReceiver.class);
+                audioManager.registerMediaButtonEventReceiver(component);
+            } catch (Exception ignored) {}
+
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * 無音オーディオを極低負荷で維持し、OSに「このアプリが現在オーディオ再生中」と認識させる。
+     * これによりBluetoothイヤホンのメディアボタン（AVRCP）が100%確実に本アプリにルーティングされる。
+     */
+    private void setupSilentAudioTracker() {
+        try {
+            if (silentTrack != null) {
+                try { silentTrack.stop(); silentTrack.release(); } catch (Exception ignored) {}
+                silentTrack = null;
+            }
+
+            int sampleRate = 8000;
+            int bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            if (bufferSize <= 0) bufferSize = 1024;
+
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+
+            AudioFormat format = new AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .build();
+
+            silentTrack = new AudioTrack(attrs, format, bufferSize, AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE);
+            byte[] silence = new byte[bufferSize]; // 全部0 (完全無音)
+
+            requestAudioFocus();
+            silentTrack.play();
+
+            new Thread(() -> {
+                while (silentTrack != null && silentTrack.getState() == AudioTrack.STATE_INITIALIZED) {
+                    try {
+                        if (silentTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                            silentTrack.write(silence, 0, silence.length);
+                        }
+                        Thread.sleep(500); // 0.5秒おきに無音バッファ供給 (CPU負荷ほぼ0)
+                    } catch (Exception e) {
+                        break;
+                    }
+                }
+            }).start();
+
+        } catch (Exception ignored) {}
+    }
+
+    private void requestAudioFocus() {
+        if (audioManager == null) return;
+        try {
+            AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {
+                if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
+                    // 他アプリが再生開始した場合は譲る
+                    if (silentTrack != null) {
+                        try { silentTrack.pause(); } catch (Exception ignored) {}
+                    }
+                } else if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
+                    // 他アプリが停止したら復帰
+                    if (silentTrack != null) {
+                        try { silentTrack.play(); } catch (Exception ignored) {}
+                    }
+                    if (mediaSession != null) {
+                        mediaSession.setActive(true);
+                    }
+                }
+            };
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                AudioAttributes playbackAttributes = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build();
+                AudioFocusRequest focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                        .setAudioAttributes(playbackAttributes)
+                        .setAcceptsDelayedFocusGain(true)
+                        .setOnAudioFocusChangeListener(focusListener)
+                        .build();
+                audioFocusRequestObj = focusRequest;
+                audioManager.requestAudioFocus(focusRequest);
+            } else {
+                audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+            }
         } catch (Exception ignored) {}
     }
 
@@ -92,11 +214,13 @@ public class ShutdownAccessibilityService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        instance = null;
+        if (silentTrack != null) {
+            try { silentTrack.stop(); silentTrack.release(); } catch (Exception ignored) {}
+            silentTrack = null;
+        }
         if (mediaSession != null) {
-            try {
-                mediaSession.setActive(false);
-                mediaSession.release();
-            } catch (Exception ignored) {}
+            try { mediaSession.setActive(false); mediaSession.release(); } catch (Exception ignored) {}
             mediaSession = null;
         }
         super.onDestroy();
@@ -110,7 +234,6 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         }
 
         int code = event.getKeyCode();
-
         boolean isVolumeKey = (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN);
         boolean isMediaKey = isMediaKeyCode(code);
 
@@ -119,6 +242,50 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         }
 
         return handleKeyInput(code, "Accessibility");
+    }
+
+    public static void onExternalMediaButton(Context context, int code, String source) {
+        if (instance != null) {
+            instance.handleKeyInput(code, source);
+        } else {
+            // サービスが未接続でもBroadcastReceiverから直接SharedPreferencesを更新・チェック
+            handleStandaloneMediaButton(context, code, source);
+        }
+    }
+
+    private static void handleStandaloneMediaButton(Context context, int code, String source) {
+        SharedPreferences sp = context.getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (!sp.getBoolean("autoClick", true)) return;
+
+        SharedPreferences diag = context.getSharedPreferences(DIAG_PREFS, MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long lastTime = diag.getLong("last_media_tap_time", 0);
+        long diff = now - lastTime;
+
+        if (lastTime > 0 && diff <= MEDIA_MULTI_TAP_WINDOW_MS && diff >= 200) {
+            diag.edit()
+                    .putLong("last_media_tap_time", 0)
+                    .putString("last_key_name", "イヤホン操作 (" + code + ") [2回目検知 → ロック要求]")
+                    .putString("last_key_source", source)
+                    .putLong("last_key_time", now)
+                    .putBoolean("last_key_triggered", true)
+                    .putString("last_trigger_reason", "ダブルタップ 3秒以内連続 (" + diff + "ms)")
+                    .putLong("last_trigger_time", now)
+                    .apply();
+
+            // アクセシビリティがバインドされていれば実行
+            if (instance != null) {
+                instance.triggerLock("外部レシーバー経由 (" + diff + "ms)");
+            }
+        } else {
+            diag.edit()
+                    .putLong("last_media_tap_time", now)
+                    .putString("last_key_name", "イヤホン操作 (" + code + ") [1回目: 3秒以内に再度操作で画面OFF]")
+                    .putString("last_key_source", source)
+                    .putLong("last_key_time", now)
+                    .putBoolean("last_key_triggered", false)
+                    .apply();
+        }
     }
 
     private boolean isMediaKeyCode(int code) {
@@ -131,7 +298,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
                 || code == KeyEvent.KEYCODE_MEDIA_PREVIOUS);
     }
 
-    private boolean handleKeyInput(int code, String source) {
+    public boolean handleKeyInput(int code, String source) {
         long now = System.currentTimeMillis();
 
         // 120ms以内の同一キー重複検知（AccessibilityとMediaSessionの二重受信）を防止
@@ -204,15 +371,26 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         return false;
     }
 
-    private void triggerLock(String reason) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
-        } else {
-            performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
-        }
+    public void triggerLock(String reason) {
+        mainHandler.post(() -> {
+            boolean success = false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                success = performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+            } else {
+                success = performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
+            }
 
-        vibrateFeedback();
-        recordTrigger(reason);
+            vibrateFeedback();
+            recordTrigger(reason + (success ? " [成功]" : " [アクション未実行]"));
+        });
+    }
+
+    public static boolean triggerLockManual(Context context) {
+        if (instance != null) {
+            instance.triggerLock("手動テスト実行");
+            return true;
+        }
+        return false;
     }
 
     private void vibrateFeedback() {

@@ -163,6 +163,23 @@ public class MainActivity extends Activity {
         battery.setOnClickListener(v -> openBatterySettings());
         root.addView(battery, new LinearLayout.LayoutParams(-1, dp(44)));
 
+        View space2b = new View(this);
+        root.addView(space2b, new LinearLayout.LayoutParams(-1, dp(10)));
+
+        Button testLock = new Button(this);
+        testLock.setText("⚡ 画面OFFを手動テスト（タップして即ロック）");
+        testLock.setTextColor(0xff74e0b0);
+        testLock.setTextSize(13);
+        testLock.setAllCaps(false);
+        testLock.setBackground(bg(0xff162822, 16));
+        testLock.setOnClickListener(v -> {
+            boolean done = ShutdownAccessibilityService.triggerLockManual(this);
+            if (!done) {
+                Toast.makeText(this, "ユーザー補助が有効になっていません。先に『ユーザー補助を設定』からONにしてください。", Toast.LENGTH_LONG).show();
+            }
+        });
+        root.addView(testLock, new LinearLayout.LayoutParams(-1, dp(44)));
+
         View space3 = new View(this);
         root.addView(space3, new LinearLayout.LayoutParams(-1, dp(16)));
 
@@ -180,7 +197,7 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         root.addView(terms, new LinearLayout.LayoutParams(-1, dp(34)));
 
-        updateStatus = text("最新バージョン v2.0.0", 11, 0xff77768a);
+        updateStatus = text("最新バージョン v2.1.0", 11, 0xff77768a);
         updateStatus.setGravity(Gravity.CENTER);
         root.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(26)));
 
