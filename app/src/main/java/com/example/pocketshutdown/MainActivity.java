@@ -50,6 +50,8 @@ public class MainActivity extends Activity {
     TextView downloadPercentText;
     TextView downloadSizeText;
     final java.util.Map<String, Switch> switchMap = new java.util.HashMap<>();
+    boolean isUpdatingSwitches = false;
+    AlertDialog accessibilityDialog;
 
     @Override
     public void onCreate(Bundle b) {
@@ -242,6 +244,9 @@ public class MainActivity extends Activity {
             refreshSwitches();
             refresh();
             Toast.makeText(this, "推奨設定に復元しました", Toast.LENGTH_SHORT).show();
+            if (!ShutdownAccessibilityService.isEnabled(this)) {
+                showAccessibilityRequiredDialog();
+            }
         });
         dangerCard.addView(restoreBtn, new LinearLayout.LayoutParams(-1, dp(40)));
 
@@ -255,7 +260,7 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         root.addView(terms, new LinearLayout.LayoutParams(-1, dp(34)));
 
-        updateStatus = text("最新バージョン v2.4.0", 11, 0xff77768a);
+        updateStatus = text("最新バージョン v2.4.1", 11, 0xff77768a);
         updateStatus.setGravity(Gravity.CENTER);
         root.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(26)));
 
@@ -297,6 +302,7 @@ public class MainActivity extends Activity {
         Switch sw = new Switch(this);
         sw.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(prefKey, defaultVal));
         sw.setOnCheckedChangeListener((btn, checked) -> {
+            if (isUpdatingSwitches) return;
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(prefKey, checked).apply();
             if (checked && !ShutdownAccessibilityService.isEnabled(this)) {
                 showAccessibilityRequiredDialog();
@@ -320,10 +326,15 @@ public class MainActivity extends Activity {
     }
 
     void refreshSwitches() {
-        android.content.SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
-        for (java.util.Map.Entry<String, Switch> entry : switchMap.entrySet()) {
-            boolean def = !entry.getKey().equals("earphoneOnly") || sp.getBoolean("earphoneOnly", true);
-            entry.getValue().setChecked(sp.getBoolean(entry.getKey(), def));
+        isUpdatingSwitches = true;
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+            for (java.util.Map.Entry<String, Switch> entry : switchMap.entrySet()) {
+                boolean def = !entry.getKey().equals("earphoneOnly") || sp.getBoolean("earphoneOnly", true);
+                entry.getValue().setChecked(sp.getBoolean(entry.getKey(), def));
+            }
+        } finally {
+            isUpdatingSwitches = false;
         }
     }
 
@@ -965,7 +976,11 @@ public class MainActivity extends Activity {
     }
 
     void showAccessibilityRequiredDialog() {
-        new AlertDialog.Builder(this)
+        if (isFinishing() || isDestroyed()) return;
+        if (accessibilityDialog != null && accessibilityDialog.isShowing()) {
+            return;
+        }
+        accessibilityDialog = new AlertDialog.Builder(this)
                 .setTitle("ユーザー補助の許可が必要です")
                 .setMessage("画面をOFFにして端末をロックするには、Pocket Lockのユーザー補助サービスを有効にする必要があります。\n\n『設定を開く』をタップして、インストール済みのアプリから『Pocket Lock』をONにしてください。\n\n※設定がグレーアウトしている場合は、アプリ情報画面の右上『︙』メニューから『制限付き設定を許可』を行ってください。")
                 .setPositiveButton("設定を開く", (d, w) -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
