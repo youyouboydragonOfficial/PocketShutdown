@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
         head.setTypeface(null, 1);
         root.addView(head, new LinearLayout.LayoutParams(-1, dp(70)));
 
-        TextView sub = text("イヤホンの再生/停止（ダブルタップ）を\n3秒以内に連続で行うと画面ロック", 14, 0xffa9a8bc);
+        TextView sub = text("イヤホン操作（ダブルタップ＝音量UPや1回タップ）を\n3秒以内に連続2回行うと画面ロック", 14, 0xffa9a8bc);
         sub.setGravity(Gravity.CENTER);
         root.addView(sub, new LinearLayout.LayoutParams(-1, dp(46)));
 
@@ -183,9 +183,8 @@ public class MainActivity extends Activity {
         root.addView(space3, new LinearLayout.LayoutParams(-1, dp(16)));
 
         // 設定スイッチ項目群
-        addSwitchRow(root, "イヤホン操作で画面OFF", "autoClick", true, "メイン機能: 3秒以内の連続操作で画面OFF");
-        addSwitchRow(root, "音量ボタン2回押しでも画面OFF", "volumeDoubleTap", true, "音量UP/DOWNキーの素早い2回押しでもロック");
-        addSwitchRow(root, "イヤホン接続中のみ有効", "earphoneOnly", true, "OFFにするとスマホ本体の音量キーでも画面OFF可能");
+        addSwitchRow(root, "イヤホン/音量操作で画面OFF", "autoClick", true, "メイン機能: 3秒以内に連続2回操作で画面OFF");
+        addSwitchRow(root, "スマホ本体の音量キーでも動作", "allowPhoneVolume", true, "ONにするとスマホ本体の音量ボタン2回押しでもロック");
         addSwitchRow(root, "画面OFF時に振動(バイブ)", "vibrate", true, "ロック成功時に本体が短く振動します");
 
         View spaceDanger = new View(this);
@@ -256,7 +255,7 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         root.addView(terms, new LinearLayout.LayoutParams(-1, dp(34)));
 
-        updateStatus = text("最新バージョン v2.3.0", 11, 0xff77768a);
+        updateStatus = text("最新バージョン v2.4.0", 11, 0xff77768a);
         updateStatus.setGravity(Gravity.CENTER);
         root.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(26)));
 
@@ -601,11 +600,11 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("使い方")
                 .setMessage("【画面OFFにする方法】\n\n"
-                        + "1. イヤホンのボタンを2回連続押して音楽を再生/一時停止する操作を、3秒以内に連続で2回行います。\n"
-                        + "（ポンポン … ポンポン と3秒以内に連続操作）\n\n"
-                        + "2. 3秒以内に2回目の操作を受信すると、画面がOFFになり端末がロックされます。\n\n"
-                        + "3. ロック成功時に本体が短く振動（バイブレーション）します。\n\n"
-                        + "※ 普段1回だけダブルタップして音楽を再生・停止したい時は、3秒以内に再度押さなければ画面は消えません。")
+                        + "1. イヤホンのダブルタップ（音量UP/DOWN）や1回タップ（再生/停止）を、3秒以内に連続で2回行います。\n"
+                        + "（トントン … トントン と3秒以内に2回操作）\n\n"
+                        + "2. スマホ本体の音量ボタン（UPまたはDOWN）を3秒以内に2回ポチ・ポチと押すことでも画面OFFできます。\n\n"
+                        + "3. 3秒以内に2回目の操作を受信すると、画面がOFFになり端末がロックされます（短く振動します）。\n\n"
+                        + "※ 普段1回だけ音量を変えたり音楽を止めたい時は、3秒以内に再度押さなければ画面は消えません。")
                 .setPositiveButton("OK", null)
                 .show();
     }

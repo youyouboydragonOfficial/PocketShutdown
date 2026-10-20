@@ -32,13 +32,11 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     public static final String PREFS = "settings";
     public static final String DIAG_PREFS = "diagnostics";
 
-    public static final long MEDIA_MULTI_TAP_WINDOW_MS = 3000; // 3秒以内
-    public static final long VOLUME_DOUBLE_TAP_MS = 650;
+    public static final long MULTI_TAP_WINDOW_MS = 3000; // 3秒以内
 
     private static volatile ShutdownAccessibilityService instance;
 
-    private long lastVolumeUpTime = 0;
-    private long lastVolumeDownTime = 0;
+    private long lastVolumeActionTime = 0;
     private long lastMediaActionTime = 0;
 
     private long lastDuplicateEventTime = 0;
@@ -125,8 +123,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             try { mediaSession.setActive(false); } catch (Exception ignored) {}
         }
         lastMediaActionTime = 0;
-        lastVolumeUpTime = 0;
-        lastVolumeDownTime = 0;
+        lastVolumeActionTime = 0;
     }
 
     public void resumeService() {
@@ -210,15 +207,13 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         long lastTime = diag.getLong("last_media_tap_time", 0);
         long diff = now - lastTime;
 
-        if (lastTime > 0 && diff <= MEDIA_MULTI_TAP_WINDOW_MS && diff >= 200) {
+        if (lastTime > 0 && diff <= MULTI_TAP_WINDOW_MS && diff >= 150) {
             diag.edit()
                     .putLong("last_media_tap_time", 0)
                     .putString("last_key_name", "イヤホン操作 (" + code + ") [2回目検知 → ロック要求]")
                     .putString("last_key_source", source)
                     .putLong("last_key_time", now)
                     .putBoolean("last_key_triggered", true)
-                    .putString("last_trigger_reason", "ダブルタップ 3秒以内連続 (" + diff + "ms)")
-                    .putLong("last_trigger_time", now)
                     .apply();
 
             // アクセシビリティがバインドされていれば実行
@@ -263,10 +258,16 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             return false;
         }
 
-        boolean earphoneOnly = sp.getBoolean("earphoneOnly", true);
+        boolean earphoneOnly = sp.getBoolean("earphoneOnly", false);
         boolean earphoneConnected = isEarphoneConnected();
 
         boolean isVolume = (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN);
+        boolean isMedia = isMediaKeyCode(code);
+
+        if (!isVolume && !isMedia) {
+            return false;
+        }
+
         if (isVolume && earphoneOnly && !earphoneConnected) {
             recordKey(getKeyName(code) + " [イヤホン未接続のため除外]", code, source, false);
             return false;
@@ -274,42 +275,32 @@ public class ShutdownAccessibilityService extends AccessibilityService {
 
         String keyName = getKeyName(code);
 
-        // 1) 音量キーのダブルタップ判定 (UPまたはDOWN)
-        if (code == KeyEvent.KEYCODE_VOLUME_UP) {
-            recordKey(keyName, code, source, false);
-            if (now - lastVolumeUpTime <= VOLUME_DOUBLE_TAP_MS) {
-                lastVolumeUpTime = 0;
-                triggerLock("音量UP 2回押し (" + source + ")");
+        // 1) 音量キーの判定 (イヤホンのダブルタップ＝音量UP/DOWN や、本体音量キー)
+        // 3秒以内に連続で2回操作されると画面OFF！
+        if (isVolume) {
+            long diff = now - lastVolumeActionTime;
+            if (lastVolumeActionTime > 0 && diff <= MULTI_TAP_WINDOW_MS && diff >= 150) {
+                lastVolumeActionTime = 0;
+                recordKey(keyName + " [2回目検知: 画面OFF実行]", code, source, true);
+                triggerLock(keyName + " 3秒以内連続2回 (" + diff + "ms)");
                 return true;
             } else {
-                lastVolumeUpTime = now;
-                return false;
-            }
-        } else if (code == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            recordKey(keyName, code, source, false);
-            if (now - lastVolumeDownTime <= VOLUME_DOUBLE_TAP_MS) {
-                lastVolumeDownTime = 0;
-                triggerLock("音量DOWN 2回押し (" + source + ")");
-                return true;
-            } else {
-                lastVolumeDownTime = now;
+                lastVolumeActionTime = now;
+                recordKey(keyName + " [1回目: 3秒以内に再度操作で画面OFF]", code, source, false);
                 return false;
             }
         }
 
-        // 2) イヤホン操作キーの判定:
-        // イヤホン側で「2回連続押して再生・停止する機能」を利用し、
-        // その操作を3秒以内に連続で行うと画面OFF
-        if (isMediaKeyCode(code)) {
+        // 2) メディア操作キーの判定 (イヤホンの1回タップ＝再生/一時停止 や HeadsetHook)
+        // 3秒以内に連続で2回操作されると画面OFF！
+        if (isMedia) {
             long diff = now - lastMediaActionTime;
-            if (lastMediaActionTime > 0 && diff <= MEDIA_MULTI_TAP_WINDOW_MS && diff >= 200) {
-                // 3秒以内に2回目の操作を受信 -> 画面OFF実行！
+            if (lastMediaActionTime > 0 && diff <= MULTI_TAP_WINDOW_MS && diff >= 150) {
                 lastMediaActionTime = 0;
                 recordKey(keyName + " [2回目検知: 画面OFF実行]", code, source, true);
-                triggerLock("ダブルタップ 3秒以内連続 (" + diff + "ms)");
+                triggerLock(keyName + " 3秒以内連続2回 (" + diff + "ms)");
                 return true;
             } else {
-                // 1回目の操作を受信 -> タイマー開始
                 lastMediaActionTime = now;
                 recordKey(keyName + " [1回目: 3秒以内に再度操作で画面OFF]", code, source, false);
                 return false;
