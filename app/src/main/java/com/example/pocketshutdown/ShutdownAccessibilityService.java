@@ -3,24 +3,25 @@ package com.example.pocketshutdown;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.media.AudioAttributes;
+import android.database.ContentObserver;
 import android.media.AudioDeviceInfo;
-import android.media.AudioFocusRequest;
-import android.media.AudioFormat;
 import android.media.AudioManager;
-import android.media.AudioTrack;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 import android.bluetooth.BluetoothAdapter;
@@ -46,6 +47,12 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     private AudioManager audioManager;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    private ContentObserver volumeObserver;
+    private BroadcastReceiver volumeReceiver;
+    private int lastMusicVolume = -1;
+    private long lastVolumeChangeTime = 0;
+    private int initialVolumeBeforeLock = -1;
+
     public static ShutdownAccessibilityService getInstance() {
         return instance;
     }
@@ -69,6 +76,99 @@ public class ShutdownAccessibilityService extends AccessibilityService {
 
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         setupMediaSession();
+        setupVolumeObserver();
+    }
+
+    private void setupVolumeObserver() {
+        try {
+            if (audioManager != null) {
+                lastMusicVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+            }
+
+            // 1. ContentObserver で音量変化を監視（Bluetoothイヤホンの絶対音量変更を確実にキャッチ）
+            if (volumeObserver == null) {
+                volumeObserver = new ContentObserver(mainHandler) {
+                    @Override
+                    public void onChange(boolean selfChange) {
+                        super.onChange(selfChange);
+                        checkVolumeChanged("ContentObserver");
+                    }
+                };
+                getContentResolver().registerContentObserver(
+                        Settings.System.CONTENT_URI, true, volumeObserver);
+            }
+
+            // 2. BroadcastReceiver ("android.media.VOLUME_CHANGED_ACTION") で音量変化を二重監視
+            if (volumeReceiver == null) {
+                volumeReceiver = new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        if (intent != null && "android.media.VOLUME_CHANGED_ACTION".equals(intent.getAction())) {
+                            int streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1);
+                            if (streamType == AudioManager.STREAM_MUSIC) {
+                                checkVolumeChanged("VolumeReceiver");
+                            }
+                        }
+                    }
+                };
+                IntentFilter filter = new IntentFilter("android.media.VOLUME_CHANGED_ACTION");
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    registerReceiver(volumeReceiver, filter, Context.RECEIVER_EXPORTED);
+                } else {
+                    registerReceiver(volumeReceiver, filter);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void checkVolumeChanged(String source) {
+        if (audioManager == null) return;
+        int currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        if (currentVol == lastMusicVolume) {
+            return;
+        }
+        int prevVol = lastMusicVolume;
+        lastMusicVolume = currentVol;
+
+        // 画面が既にOFF（スリープ中）の場合は一切処理しない（誤動作防止）
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null && !pm.isInteractive()) {
+            return;
+        }
+
+        SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (!sp.getBoolean("autoClick", true)) {
+            return;
+        }
+
+        // イヤホン接続中のみ発動（本体ボタン誤爆防止）
+        if (!isEarphoneConnected()) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        long diff = now - lastVolumeChangeTime;
+
+        if (lastVolumeChangeTime > 0 && diff <= MULTI_TAP_WINDOW_MS && diff >= 150) {
+            lastVolumeChangeTime = 0;
+            recordKey("イヤホン音量操作 (" + prevVol + "→" + currentVol + ") [2回目: 画面OFF実行]", 24, source, true);
+
+            // ロック実行前に元の音量にスマート復元（音が上がりすぎないようにする）
+            if (initialVolumeBeforeLock >= 0) {
+                final int restoreVol = initialVolumeBeforeLock;
+                initialVolumeBeforeLock = -1;
+                try {
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, restoreVol, 0);
+                    lastMusicVolume = restoreVol;
+                } catch (Exception ignored) {}
+            }
+
+            triggerLock("イヤホン音量ダブルタップ (" + diff + "ms)");
+        } else {
+            lastVolumeChangeTime = now;
+            initialVolumeBeforeLock = prevVol;
+            recordKey("イヤホン音量操作 (" + prevVol + "→" + currentVol + ") [1回目: 3秒以内に再度操作で画面OFF]", 24, source, false);
+        }
     }
 
     private void setupMediaSession() {
@@ -78,7 +178,6 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             }
             mediaSession = new MediaSession(this, "PocketLockInput");
 
-            // MediaButtonReceiverとの連携
             Intent mediaButtonIntent = new Intent(Intent.ACTION_MEDIA_BUTTON);
             mediaButtonIntent.setClass(this, MediaButtonBroadcastReceiver.class);
             PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, mediaButtonIntent,
@@ -96,20 +195,46 @@ public class ShutdownAccessibilityService extends AccessibilityService {
                     }
                     return super.onMediaButtonEvent(intent);
                 }
+
+                @Override
+                public void onPlay() {
+                    handleKeyInput(KeyEvent.KEYCODE_MEDIA_PLAY, "MediaSession.onPlay");
+                }
+
+                @Override
+                public void onPause() {
+                    handleKeyInput(KeyEvent.KEYCODE_MEDIA_PAUSE, "MediaSession.onPause");
+                }
+
+                @Override
+                public void onSkipToNext() {
+                    handleKeyInput(KeyEvent.KEYCODE_MEDIA_NEXT, "MediaSession.onSkipToNext");
+                }
+
+                @Override
+                public void onSkipToPrevious() {
+                    handleKeyInput(KeyEvent.KEYCODE_MEDIA_PREVIOUS, "MediaSession.onSkipToPrevious");
+                }
             });
 
             mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS);
-            // 端末の音楽プレイヤー（三本バー・イコライザー）を誤作動させないよう STATE_NONE (非再生) に設定
+
+            // メディアボタン受信をOSに許可させるため有効なアクションを指定
+            long actions = PlaybackState.ACTION_PLAY_PAUSE
+                    | PlaybackState.ACTION_PLAY
+                    | PlaybackState.ACTION_PAUSE
+                    | PlaybackState.ACTION_SKIP_TO_NEXT
+                    | PlaybackState.ACTION_SKIP_TO_PREVIOUS;
+
             mediaSession.setPlaybackState(new PlaybackState.Builder()
-                    .setState(PlaybackState.STATE_NONE, 0, 0f)
-                    .setActions(0)
+                    .setState(PlaybackState.STATE_PAUSED, 0, 0f)
+                    .setActions(actions)
                     .build());
 
             SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
             boolean enabled = sp.getBoolean("autoClick", true);
             mediaSession.setActive(enabled);
 
-            // AudioManagerへのレシーバー登録 (旧API互換)
             try {
                 ComponentName component = new ComponentName(this, MediaButtonBroadcastReceiver.class);
                 audioManager.registerMediaButtonEventReceiver(component);
@@ -124,6 +249,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         }
         lastMediaActionTime = 0;
         lastVolumeActionTime = 0;
+        lastVolumeChangeTime = 0;
     }
 
     public void resumeService() {
@@ -168,6 +294,14 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             try { mediaSession.setActive(false); mediaSession.release(); } catch (Exception ignored) {}
             mediaSession = null;
         }
+        if (volumeObserver != null) {
+            try { getContentResolver().unregisterContentObserver(volumeObserver); } catch (Exception ignored) {}
+            volumeObserver = null;
+        }
+        if (volumeReceiver != null) {
+            try { unregisterReceiver(volumeReceiver); } catch (Exception ignored) {}
+            volumeReceiver = null;
+        }
         super.onDestroy();
     }
 
@@ -175,6 +309,12 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     protected boolean onKeyEvent(KeyEvent event) {
         if (event == null) return false;
         if (event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0) {
+            return false;
+        }
+
+        // 画面が既にOFF（スリープ中）の場合は一切処理しない（電源ボタンOFF後の誤動作を完全防止）
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null && !pm.isInteractive()) {
             return false;
         }
 
@@ -186,6 +326,13 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             return false;
         }
 
+        // 本体の音量キーでの画面OFFは完全撤廃！イヤホン接続時のみ処理する
+        if (isVolumeKey) {
+            if (!isEarphoneConnected()) {
+                return false; // 本体音量キーは完全に無視
+            }
+        }
+
         return handleKeyInput(code, "Accessibility");
     }
 
@@ -193,12 +340,16 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         if (instance != null) {
             instance.handleKeyInput(code, source);
         } else {
-            // サービスが未接続でもBroadcastReceiverから直接SharedPreferencesを更新・チェック
             handleStandaloneMediaButton(context, code, source);
         }
     }
 
     private static void handleStandaloneMediaButton(Context context, int code, String source) {
+        PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        if (pm != null && !pm.isInteractive()) {
+            return;
+        }
+
         SharedPreferences sp = context.getSharedPreferences(PREFS, MODE_PRIVATE);
         if (!sp.getBoolean("autoClick", true)) return;
 
@@ -216,7 +367,6 @@ public class ShutdownAccessibilityService extends AccessibilityService {
                     .putBoolean("last_key_triggered", true)
                     .apply();
 
-            // アクセシビリティがバインドされていれば実行
             if (instance != null) {
                 instance.triggerLock("外部レシーバー経由 (" + diff + "ms)");
             }
@@ -242,9 +392,13 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     }
 
     public boolean handleKeyInput(int code, String source) {
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null && !pm.isInteractive()) {
+            return false;
+        }
+
         long now = System.currentTimeMillis();
 
-        // 120ms以内の同一キー重複検知（AccessibilityとMediaSessionの二重受信）を防止
         if (code == lastDuplicateEventCode && (now - lastDuplicateEventTime < 120)) {
             return false;
         }
@@ -258,8 +412,10 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             return false;
         }
 
-        boolean earphoneOnly = sp.getBoolean("earphoneOnly", false);
-        boolean earphoneConnected = isEarphoneConnected();
+        // イヤホン接続中のみ実行（本体誤爆防止）
+        if (!isEarphoneConnected()) {
+            return false;
+        }
 
         boolean isVolume = (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN);
         boolean isMedia = isMediaKeyCode(code);
@@ -268,15 +424,9 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             return false;
         }
 
-        if (isVolume && earphoneOnly && !earphoneConnected) {
-            recordKey(getKeyName(code) + " [イヤホン未接続のため除外]", code, source, false);
-            return false;
-        }
-
         String keyName = getKeyName(code);
 
-        // 1) 音量キーの判定 (イヤホンのダブルタップ＝音量UP/DOWN や、本体音量キー)
-        // 3秒以内に連続で2回操作されると画面OFF！
+        // 1) 音量キーの判定 (イヤホンからのKeyEvent)
         if (isVolume) {
             long diff = now - lastVolumeActionTime;
             if (lastVolumeActionTime > 0 && diff <= MULTI_TAP_WINDOW_MS && diff >= 150) {
@@ -291,8 +441,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             }
         }
 
-        // 2) メディア操作キーの判定 (イヤホンの1回タップ＝再生/一時停止 や HeadsetHook)
-        // 3秒以内に連続で2回操作されると画面OFF！
+        // 2) メディア操作キーの判定 (イヤホンの1回タップ＝再生/停止など)
         if (isMedia) {
             long diff = now - lastMediaActionTime;
             if (lastMediaActionTime > 0 && diff <= MULTI_TAP_WINDOW_MS && diff >= 150) {
@@ -311,6 +460,11 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     }
 
     public void triggerLock(String reason) {
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null && !pm.isInteractive()) {
+            return;
+        }
+
         mainHandler.post(() -> {
             boolean success = false;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
