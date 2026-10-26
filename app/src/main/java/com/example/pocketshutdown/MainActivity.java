@@ -13,8 +13,8 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.LinearGradient;
+import android.graphics.RadialGradient;
 import android.graphics.drawable.GradientDrawable;
-import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.os.Build;
 import android.content.pm.PackageManager;
@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
     SmoothProgressBar downloadBar;
     TextView downloadPercentText;
     TextView downloadSizeText;
-    final java.util.Map<String, Switch> switchMap = new java.util.HashMap<>();
+    final java.util.Map<String, NeonToggleSwitch> switchMap = new java.util.HashMap<>();
     boolean isUpdatingSwitches = false;
     AlertDialog accessibilityDialog;
 
@@ -112,8 +112,8 @@ public class MainActivity extends Activity {
         heroImg.setAdjustViewBounds(true);
         hero.addView(heroImg, new FrameLayout.LayoutParams(-1, -2));
 
-        // 右上の歯車付きバージョン表示
-        TextView verBadge = text("v2.6.0 ⚙", 12, 0xfffcd34d);
+        // 右上の歯車付きバージョン表示 (タップで更新確認)
+        TextView verBadge = text("v2.6.1 ⚙", 12, 0xfffcd34d);
         verBadge.setTypeface(null, 1);
         verBadge.setPadding(dp(8), dp(4), dp(8), dp(4));
         FrameLayout.LayoutParams verLp = new FrameLayout.LayoutParams(-2, -2, Gravity.RIGHT | Gravity.TOP);
@@ -241,11 +241,32 @@ public class MainActivity extends Activity {
         View space2 = new View(this);
         root.addView(space2, new LinearLayout.LayoutParams(-1, dp(12)));
 
-        // ※ 手動テストボタンはユーザー指示により完全削除
+        // 5. 設定カード群 (画像通りの美しいレインボーネオントグルスイッチ＆かっこいいカード)
+        // カード1: イヤホン操作で画面OFF (シアン〜パープル〜マゼンタのレインボートグル)
+        addCoolSwitchCard(
+                root,
+                "イヤホン操作で画面OFF",
+                "ダブルタップ（音量UP/DOWN）や1回タップで画面消灯",
+                "autoClick",
+                true,
+                new int[]{0xff38bdf8, 0xff818cf8, 0xffc084fc, 0xfff472b6},
+                0xfff0abfc,
+                0x55818cf8,
+                "🎧"
+        );
 
-        // 5. 設定スイッチ項目群 (画像通りの美しい発光トグルスイッチ)
-        addSwitchRowCustom(root, "イヤホン操作で画面OFF", "autoClick", true, 0xffa855f7, 0xff4338ca);
-        addSwitchRowCustom(root, "画面OFF時に振動 (バイブ)", "vibrate", true, 0xfffbbf24, 0xff92400e);
+        // カード2: 画面OFF時に振動 (バイブ) (ゴールド〜アンバー〜オレンジ〜レッドのレインボートグル)
+        addCoolSwitchCard(
+                root,
+                "画面OFF時に振動 (バイブ)",
+                "ロック成功時に本体が短く振動して通知",
+                "vibrate",
+                true,
+                new int[]{0xfffde047, 0xfff59e0b, 0xffea580c, 0xffe11d48},
+                0xfffef08a,
+                0x55f59e0b,
+                "📳"
+        );
 
         View spaceDanger = new View(this);
         root.addView(spaceDanger, new LinearLayout.LayoutParams(-1, dp(8)));
@@ -338,8 +359,8 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         footer.addView(terms, new LinearLayout.LayoutParams(-2, -2));
 
-        updateStatus = text("最新バージョン v2.6.0", 11, 0xff5e5d70);
-        updateStatus.setVisibility(View.GONE); // バージョンは上部に表示するため非表示
+        updateStatus = text("最新バージョン v2.6.1", 11, 0xff5e5d70);
+        updateStatus.setVisibility(View.GONE);
         footer.addView(updateStatus);
 
         TextView creator = text("youyouboydragon", 11, 0xffb45309);
@@ -359,37 +380,48 @@ public class MainActivity extends Activity {
         scroll.postDelayed(this::checkForUpdate, 800);
     }
 
-    void addSwitchRowCustom(LinearLayout parent, String label, String prefKey, boolean defaultVal, int thumbColor, int trackColor) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(12), dp(16), dp(12));
+    void addCoolSwitchCard(LinearLayout parent, String title, String subtitle, String prefKey, boolean defaultVal, int[] rainbowColors, int thumbColor, int glowColor, String iconEmoji) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(16), dp(13), dp(16), dp(13));
 
-        GradientDrawable rowBg = new GradientDrawable();
-        rowBg.setColor(0xff121429);
-        rowBg.setCornerRadius(dp(14));
-        rowBg.setStroke(dp(0.8f), 0x336366f1);
-        row.setBackground(rowBg);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(0xff111326);
+        cardBg.setCornerRadius(dp(16));
+        cardBg.setStroke(dp(1f), glowColor);
+        card.setBackground(cardBg);
 
-        TextView t = text(label, 14, Color.WHITE);
+        // 左側：アイコンバッジ
+        TextView iconBadge = text(iconEmoji, 16, Color.WHITE);
+        iconBadge.setGravity(Gravity.CENTER);
+        GradientDrawable badgeBg = bg(0x22ffffff, 10);
+        badgeBg.setStroke(dp(0.8f), glowColor);
+        iconBadge.setBackground(badgeBg);
+        card.addView(iconBadge, new LinearLayout.LayoutParams(dp(36), dp(36)));
+
+        // 中央：タイトルとサブタイトル
+        LinearLayout textCol = new LinearLayout(this);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        textCol.setPadding(dp(12), 0, dp(8), 0);
+
+        TextView t = text(title, 14, Color.WHITE);
         t.setTypeface(null, 1);
-        row.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        textCol.addView(t, new LinearLayout.LayoutParams(-1, -2));
 
-        Switch sw = new Switch(this);
-        sw.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(prefKey, defaultVal));
-
-        int[][] states = new int[][]{
-                new int[]{android.R.attr.state_checked},
-                new int[]{}
-        };
-        int[] thumbColors = new int[]{thumbColor, 0xff475569};
-        int[] trackColors = new int[]{trackColor, 0xff1e293b};
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            sw.setThumbTintList(new ColorStateList(states, thumbColors));
-            sw.setTrackTintList(new ColorStateList(states, trackColors));
+        if (subtitle != null) {
+            TextView sub = text(subtitle, 11, 0xff94a3b8);
+            sub.setPadding(0, dp(2), 0, 0);
+            textCol.addView(sub, new LinearLayout.LayoutParams(-1, -2));
         }
 
-        sw.setOnCheckedChangeListener((btn, checked) -> {
+        card.addView(textCol, new LinearLayout.LayoutParams(0, -2, 1));
+
+        // 右側：美しいレインボーネオントグルスイッチ
+        NeonToggleSwitch sw = new NeonToggleSwitch(this, rainbowColors, thumbColor);
+        sw.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(prefKey, defaultVal));
+
+        sw.setOnCheckedChangeListener((view, checked) -> {
             if (isUpdatingSwitches) return;
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(prefKey, checked).apply();
             if (checked && !ShutdownAccessibilityService.isEnabled(this)) {
@@ -397,25 +429,179 @@ public class MainActivity extends Activity {
             }
             refresh();
         });
-        row.addView(sw);
+
+        // カード全体をタップしても切り替わる
+        card.setOnClickListener(v -> sw.toggle());
+
+        card.addView(sw, new LinearLayout.LayoutParams(dp(54), dp(28)));
         switchMap.put(prefKey, sw);
 
-        parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        parent.addView(card, new LinearLayout.LayoutParams(-1, -2));
 
         View sep = new View(this);
-        parent.addView(sep, new LinearLayout.LayoutParams(-1, dp(8)));
+        parent.addView(sep, new LinearLayout.LayoutParams(-1, dp(9)));
     }
 
     void refreshSwitches() {
         isUpdatingSwitches = true;
         try {
             android.content.SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
-            for (java.util.Map.Entry<String, Switch> entry : switchMap.entrySet()) {
+            for (java.util.Map.Entry<String, NeonToggleSwitch> entry : switchMap.entrySet()) {
                 boolean def = !entry.getKey().equals("earphoneOnly") || sp.getBoolean("earphoneOnly", true);
                 entry.getValue().setChecked(sp.getBoolean(entry.getKey(), def));
             }
         } finally {
             isUpdatingSwitches = false;
+        }
+    }
+
+    static class NeonToggleSwitch extends View {
+        private boolean checked = true;
+        private float progress = 1f; // 0f(OFF) ~ 1f(ON)
+        private ValueAnimator anim;
+        private final int[] trackColors;
+        private final int thumbColor;
+        private OnCheckedChangeListener listener;
+
+        interface OnCheckedChangeListener {
+            void onCheckedChanged(NeonToggleSwitch view, boolean isChecked);
+        }
+
+        public NeonToggleSwitch(Context context, int[] rainbowColors, int thumbColor) {
+            super(context);
+            this.trackColors = rainbowColors;
+            this.thumbColor = thumbColor;
+            setClickable(true);
+        }
+
+        public void setChecked(boolean c) {
+            if (this.checked != c) {
+                this.checked = c;
+                animateTo(c ? 1f : 0f);
+            } else {
+                this.progress = c ? 1f : 0f;
+                invalidate();
+            }
+        }
+
+        public boolean isChecked() {
+            return checked;
+        }
+
+        public void setOnCheckedChangeListener(OnCheckedChangeListener l) {
+            this.listener = l;
+        }
+
+        private void animateTo(float target) {
+            if (anim != null) anim.cancel();
+            anim = ValueAnimator.ofFloat(progress, target);
+            anim.setDuration(220);
+            anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            anim.addUpdateListener(v -> {
+                progress = (float) v.getAnimatedValue();
+                invalidate();
+            });
+            anim.start();
+        }
+
+        public void toggle() {
+            checked = !checked;
+            animateTo(checked ? 1f : 0f);
+            if (listener != null) {
+                listener.onCheckedChanged(this, checked);
+            }
+        }
+
+        @Override
+        public boolean performClick() {
+            super.performClick();
+            toggle();
+            return true;
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float w = getWidth(), h = getHeight();
+            if (w <= 0 || h <= 0) return;
+            float r = h / 2f;
+
+            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            // 1. トラック（長円レール）
+            RectF trackRect = new RectF(dpStatic(getContext(), 1f), dpStatic(getContext(), 1f),
+                    w - dpStatic(getContext(), 1f), h - dpStatic(getContext(), 1f));
+
+            if (progress > 0.01f) {
+                // ON時：美しいレインボー/ネオングラデーション
+                LinearGradient grad = new LinearGradient(
+                        0, 0, w, 0,
+                        trackColors,
+                        null, Shader.TileMode.CLAMP
+                );
+                p.setStyle(Paint.Style.FILL);
+                p.setShader(grad);
+                p.setAlpha((int)(255 * progress));
+                canvas.drawRoundRect(trackRect, r, r, p);
+                p.setShader(null);
+                p.setAlpha(255);
+
+                // レインボー発光枠線
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(dpStatic(getContext(), 1.5f));
+                p.setColor(trackColors[0]);
+                canvas.drawRoundRect(trackRect, r, r, p);
+            }
+
+            if (progress < 0.99f) {
+                // OFF時：ディープスレート背景
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(0xff181a2e);
+                p.setAlpha((int)(255 * (1f - progress)));
+                canvas.drawRoundRect(trackRect, r, r, p);
+
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(dpStatic(getContext(), 1f));
+                p.setColor(0xff333852);
+                canvas.drawRoundRect(trackRect, r, r, p);
+                p.setAlpha(255);
+            }
+
+            // 2. サム（丸いつまみ）
+            float thumbR = r - dpStatic(getContext(), 2.8f);
+            float minX = r;
+            float maxX = w - r;
+            float curX = minX + progress * (maxX - minX);
+            float curY = h / 2f;
+
+            // サムのドロップシャドウ
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0x55000000);
+            canvas.drawCircle(curX, curY + dpStatic(getContext(), 1.5f), thumbR, p);
+
+            // サム本体（立体的な光沢グラデーション球体）
+            int thumbCenter = progress > 0.3f ? 0xffffffff : 0xffcbd5e1;
+            int thumbEdge = progress > 0.3f ? thumbColor : 0xff64748b;
+            RadialGradient thumbGrad = new RadialGradient(
+                    curX - thumbR * 0.25f, curY - thumbR * 0.25f, thumbR * 1.25f,
+                    new int[]{thumbCenter, thumbEdge},
+                    null, Shader.TileMode.CLAMP
+            );
+            p.setShader(thumbGrad);
+            canvas.drawCircle(curX, curY, thumbR, p);
+            p.setShader(null);
+
+            // サム外周の微細な光彩リング
+            if (progress > 0.3f) {
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(dpStatic(getContext(), 1f));
+                p.setColor(0x99ffffff);
+                canvas.drawCircle(curX, curY, thumbR, p);
+            }
+        }
+
+        static int dpStatic(Context c, float n) {
+            return (int)(n * c.getResources().getDisplayMetrics().density + .5f);
         }
     }
 
