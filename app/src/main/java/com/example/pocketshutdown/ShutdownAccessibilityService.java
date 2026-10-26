@@ -52,6 +52,7 @@ public class ShutdownAccessibilityService extends AccessibilityService {
     private int lastMusicVolume = -1;
     private long lastVolumeChangeTime = 0;
     private int initialVolumeBeforeLock = -1;
+    private long lastPhysicalVolumeKeyPressedTime = 0;
 
     public static ShutdownAccessibilityService getInstance() {
         return instance;
@@ -147,6 +148,13 @@ public class ShutdownAccessibilityService extends AccessibilityService {
         }
 
         long now = System.currentTimeMillis();
+
+        // 直近500ms以内に本体の物理音量キーが押されていた場合は、
+        // 「本体の音量ボタン操作による音量変化」なので完全に無視・スキップ！
+        if (now - lastPhysicalVolumeKeyPressedTime < 500) {
+            return;
+        }
+
         long diff = now - lastVolumeChangeTime;
 
         if (lastVolumeChangeTime > 0 && diff <= MULTI_TAP_WINDOW_MS && diff >= 150) {
@@ -326,11 +334,11 @@ public class ShutdownAccessibilityService extends AccessibilityService {
             return false;
         }
 
-        // 本体の音量キーでの画面OFFは完全撤廃！イヤホン接続時のみ処理する
+        // 【最重要】スマホ本体の物理音量キーによる画面OFFは100%完全無効化！
         if (isVolumeKey) {
-            if (!isEarphoneConnected()) {
-                return false; // 本体音量キーは完全に無視
-            }
+            lastPhysicalVolumeKeyPressedTime = System.currentTimeMillis();
+            recordKey("本体音量ボタン (" + (code == KeyEvent.KEYCODE_VOLUME_UP ? "UP" : "DOWN") + ") [本体での画面OFFは無効]", code, "PhysicalKey", false);
+            return false; // OS標準の音量調節のみ行わせ、本アプリでは一切画面OFFしない
         }
 
         return handleKeyInput(code, "Accessibility");
@@ -426,19 +434,9 @@ public class ShutdownAccessibilityService extends AccessibilityService {
 
         String keyName = getKeyName(code);
 
-        // 1) 音量キーの判定 (イヤホンからのKeyEvent)
+        // 1) 音量キーの判定: キーイベントからの音量操作は全て本体キーとみなし除外
         if (isVolume) {
-            long diff = now - lastVolumeActionTime;
-            if (lastVolumeActionTime > 0 && diff <= MULTI_TAP_WINDOW_MS && diff >= 150) {
-                lastVolumeActionTime = 0;
-                recordKey(keyName + " [2回目検知: 画面OFF実行]", code, source, true);
-                triggerLock(keyName + " 3秒以内連続2回 (" + diff + "ms)");
-                return true;
-            } else {
-                lastVolumeActionTime = now;
-                recordKey(keyName + " [1回目: 3秒以内に再度操作で画面OFF]", code, source, false);
-                return false;
-            }
+            return false;
         }
 
         // 2) メディア操作キーの判定 (イヤホンの1回タップ＝再生/停止など)
