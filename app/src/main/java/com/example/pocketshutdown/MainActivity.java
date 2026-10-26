@@ -11,10 +11,10 @@ import android.graphics.Color;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Shader;
+import android.graphics.LinearGradient;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.ClipDrawable;
-import android.graphics.drawable.LayerDrawable;
-import android.graphics.drawable.Drawable;
+import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.os.Build;
 import android.content.pm.PackageManager;
@@ -43,6 +43,7 @@ public class MainActivity extends Activity {
     TextView status;
     TextView earphoneStatus;
     TextView keyStatus;
+    GradientDrawable statusCardBg;
     TextView updateStatus;
     Dialog updateDialog;
     Dialog downloadDialog;
@@ -84,127 +85,185 @@ public class MainActivity extends Activity {
     void build() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(Color.rgb(9, 11, 22));
+        scroll.setBackgroundColor(0xff090a1a);
+        scroll.setVerticalScrollBarEnabled(false);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(24), dp(28), dp(24), dp(28));
+        root.setPadding(dp(18), dp(10), dp(18), dp(24));
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             int top = insets.getInsets(WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout()).top;
             int bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
-            v.setPadding(dp(24), dp(20) + top, dp(24), dp(20) + bottom);
+            v.setPadding(dp(18), dp(8) + top, dp(18), dp(18) + bottom);
             return insets;
         });
 
-        TextView title = text("POCKET LOCK", 12, 0xffaaa6c8);
-        title.setLetterSpacing(.22f);
-        root.addView(title, new LinearLayout.LayoutParams(-1, dp(26)));
-
+        // 1. トップヒーロー画像（星雲背景 + POCKET LOCKロゴ + 多層ネオン発光エンブレム）
         FrameLayout hero = new FrameLayout(this);
-        hero.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(180)));
-        SignalAnimationView signal = new SignalAnimationView(this);
-        hero.addView(signal, new FrameLayout.LayoutParams(-1, -1));
+        hero.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
+
+        ImageView heroImg = new ImageView(this);
+        int heroResId = getResources().getIdentifier("hero_header", "drawable", getPackageName());
+        if (heroResId != 0) {
+            heroImg.setImageResource(heroResId);
+        }
+        heroImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        heroImg.setAdjustViewBounds(true);
+        hero.addView(heroImg, new FrameLayout.LayoutParams(-1, -2));
+
+        // 右上の歯車付きバージョン表示
+        TextView verBadge = text("v2.6.0 ⚙", 12, 0xfffcd34d);
+        verBadge.setTypeface(null, 1);
+        verBadge.setPadding(dp(8), dp(4), dp(8), dp(4));
+        FrameLayout.LayoutParams verLp = new FrameLayout.LayoutParams(-2, -2, Gravity.RIGHT | Gravity.TOP);
+        verLp.topMargin = dp(14);
+        verLp.rightMargin = dp(8);
+        verBadge.setOnClickListener(v -> checkForUpdate());
+        hero.addView(verBadge, verLp);
+
         root.addView(hero);
 
-        TextView head = text("ポケットの中から、\n画面をOFF", 26, Color.WHITE);
+        // 2. メインキャッチコピー (立体ゴールドグラデーション)
+        TextView head = text("ポケットの中から、画面をOFF", 23, Color.WHITE);
         head.setGravity(Gravity.CENTER);
         head.setTypeface(null, 1);
-        root.addView(head, new LinearLayout.LayoutParams(-1, dp(70)));
+        head.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            if (head.getWidth() > 0) {
+                Shader shader = new LinearGradient(
+                        0, 0, 0, head.getTextSize() * 1.8f,
+                        new int[]{0xfffff7d6, 0xffeab308, 0xffa16207},
+                        new float[]{0f, 0.45f, 1f},
+                        Shader.TileMode.CLAMP
+                );
+                head.getPaint().setShader(shader);
+                head.setShadowLayer(dp(3), 0, dp(2), 0x99000000);
+                head.invalidate();
+            }
+        });
+        LinearLayout.LayoutParams headLp = new LinearLayout.LayoutParams(-1, dp(40));
+        headLp.topMargin = dp(4);
+        root.addView(head, headLp);
 
-        TextView sub = text("イヤホン操作（ダブルタップ＝音量UPや1回タップ）を\n3秒以内に連続2回行うと画面ロック", 14, 0xffa9a8bc);
+        TextView sub = text("イヤホン操作（ダブルタップ＝音量UPや1回タップ）を\n3秒以内に連続2回行うと画面ロック", 12.5f, 0xff9ca3af);
         sub.setGravity(Gravity.CENTER);
-        root.addView(sub, new LinearLayout.LayoutParams(-1, dp(46)));
+        sub.setLineSpacing(dp(2), 1.15f);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1, -2);
+        subLp.bottomMargin = dp(14);
+        root.addView(sub, subLp);
 
-        // 状態カード
+        // 3. ステータスカード (ゴールドガラス調 ＆ 発光枠線)
         LinearLayout statusCard = new LinearLayout(this);
-        statusCard.setOrientation(LinearLayout.VERTICAL);
-        statusCard.setPadding(dp(16), dp(14), dp(16), dp(14));
-        statusCard.setBackground(bg(0xff15172a, 18));
+        statusCard.setOrientation(LinearLayout.HORIZONTAL);
+        statusCard.setGravity(Gravity.CENTER_VERTICAL);
+        statusCard.setPadding(dp(16), dp(12), dp(16), dp(12));
 
-        status = text("●  ユーザー補助サービス未接続", 14, 0xffffb86b);
-        status.setGravity(Gravity.CENTER);
-        statusCard.addView(status, new LinearLayout.LayoutParams(-1, dp(28)));
+        statusCardBg = new GradientDrawable();
+        statusCardBg.setColor(0x18f59e0b);
+        statusCardBg.setStroke(dp(1.5f), 0xffd97706);
+        statusCardBg.setCornerRadius(dp(16));
+        statusCard.setBackground(statusCardBg);
 
-        earphoneStatus = text("イヤホン: 接続確認中…", 13, 0xffa9a8bc);
-        earphoneStatus.setGravity(Gravity.CENTER);
-        statusCard.addView(earphoneStatus, new LinearLayout.LayoutParams(-1, dp(26)));
+        // 左側：ゴールドのイヤホンアイコン
+        EarphoneIconView earphoneIcon = new EarphoneIconView(this);
+        statusCard.addView(earphoneIcon, new LinearLayout.LayoutParams(dp(34), dp(34)));
 
-        keyStatus = text("キー入力: 未検知", 12, 0xff77768a);
-        keyStatus.setGravity(Gravity.CENTER);
-        statusCard.addView(keyStatus, new LinearLayout.LayoutParams(-1, dp(24)));
+        // 右側：3行テキスト情報
+        LinearLayout statusTextCol = new LinearLayout(this);
+        statusTextCol.setOrientation(LinearLayout.VERTICAL);
+        statusTextCol.setPadding(dp(12), 0, 0, 0);
 
+        status = text("⚠ ユーザー補助サービス未接続", 13.5f, 0xfff59e0b);
+        status.setTypeface(null, 1);
+        statusTextCol.addView(status, new LinearLayout.LayoutParams(-1, -2));
+
+        earphoneStatus = text("⚠ イヤホン未接続", 12, 0xfffcd34d);
+        earphoneStatus.setPadding(0, dp(3), 0, 0);
+        statusTextCol.addView(earphoneStatus, new LinearLayout.LayoutParams(-1, -2));
+
+        keyStatus = text("キー入力: 未検知", 11, 0xffa1a1aa);
+        keyStatus.setPadding(0, dp(2), 0, 0);
+        statusTextCol.addView(keyStatus, new LinearLayout.LayoutParams(-1, -2));
+
+        statusCard.addView(statusTextCol, new LinearLayout.LayoutParams(0, -2, 1));
         root.addView(statusCard, new LinearLayout.LayoutParams(-1, -2));
 
         View space1 = new View(this);
-        root.addView(space1, new LinearLayout.LayoutParams(-1, dp(14)));
+        root.addView(space1, new LinearLayout.LayoutParams(-1, dp(12)));
 
-        Button settings = new Button(this);
-        settings.setText("ユーザー補助（アクセシビリティ）を設定");
-        settings.setTextColor(Color.WHITE);
-        settings.setTextSize(14);
-        settings.setAllCaps(false);
-        settings.setBackground(bg(0xff5547b8, 16));
-        settings.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        root.addView(settings, new LinearLayout.LayoutParams(-1, dp(50)));
+        // 4. 2分割アクションボタン (横並び)
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        // 左ボタン: 鮮やかなネオンパープル〜エレクトリックブルータッチ
+        Button settingsBtn = new Button(this);
+        settingsBtn.setText("ユーザー補助\n(アクセシビリティ) を設定");
+        settingsBtn.setTextColor(Color.WHITE);
+        settingsBtn.setTextSize(12.5f);
+        settingsBtn.setTypeface(null, 1);
+        settingsBtn.setAllCaps(false);
+        settingsBtn.setLineSpacing(dp(2), 1f);
+
+        GradientDrawable settingsBg = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{0xff6366f1, 0xff8b5cf6, 0xffa855f7}
+        );
+        settingsBg.setCornerRadius(dp(14));
+        settingsBg.setStroke(dp(1.5f), 0xffc084fc);
+        settingsBtn.setBackground(settingsBg);
+        settingsBtn.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+
+        LinearLayout.LayoutParams btnLp1 = new LinearLayout.LayoutParams(0, dp(58), 1);
+        btnLp1.rightMargin = dp(6);
+        actionRow.addView(settingsBtn, btnLp1);
+
+        // 右ボタン: ディープネイビー ガラス調
+        Button batteryBtn = new Button(this);
+        batteryBtn.setText("バックグラウンド維持・\nバッテリー制限解除");
+        batteryBtn.setTextColor(0xffe2e8f0);
+        batteryBtn.setTextSize(12f);
+        batteryBtn.setAllCaps(false);
+        batteryBtn.setLineSpacing(dp(2), 1f);
+
+        GradientDrawable batteryBg = new GradientDrawable();
+        batteryBg.setColor(0xff13182e);
+        batteryBg.setCornerRadius(dp(14));
+        batteryBg.setStroke(dp(1), 0x5538bdf8);
+        batteryBtn.setBackground(batteryBg);
+        batteryBtn.setOnClickListener(v -> openBatterySettings());
+
+        LinearLayout.LayoutParams btnLp2 = new LinearLayout.LayoutParams(0, dp(58), 1);
+        btnLp2.leftMargin = dp(6);
+        actionRow.addView(batteryBtn, btnLp2);
+
+        root.addView(actionRow, new LinearLayout.LayoutParams(-1, -2));
 
         View space2 = new View(this);
-        root.addView(space2, new LinearLayout.LayoutParams(-1, dp(10)));
+        root.addView(space2, new LinearLayout.LayoutParams(-1, dp(12)));
 
-        Button battery = new Button(this);
-        battery.setText("バックグラウンド維持・バッテリー制限解除");
-        battery.setTextColor(0xffd9d5ff);
-        battery.setTextSize(13);
-        battery.setAllCaps(false);
-        battery.setBackground(bg(0xff242044, 16));
-        battery.setOnClickListener(v -> openBatterySettings());
-        root.addView(battery, new LinearLayout.LayoutParams(-1, dp(44)));
+        // ※ 手動テストボタンはユーザー指示により完全削除
 
-        View space2b = new View(this);
-        root.addView(space2b, new LinearLayout.LayoutParams(-1, dp(10)));
-
-        Button testLock = new Button(this);
-        testLock.setText("⚡ 画面OFFを手動テスト（タップして即ロック）");
-        testLock.setTextColor(0xff74e0b0);
-        testLock.setTextSize(13);
-        testLock.setAllCaps(false);
-        testLock.setBackground(bg(0xff162822, 16));
-        testLock.setOnClickListener(v -> {
-            if (!ShutdownAccessibilityService.isEnabled(this)) {
-                showAccessibilityRequiredDialog();
-                return;
-            }
-            boolean done = ShutdownAccessibilityService.triggerLockManual(this);
-            if (!done) {
-                showAccessibilityRequiredDialog();
-            }
-        });
-        root.addView(testLock, new LinearLayout.LayoutParams(-1, dp(44)));
-
-        View space3 = new View(this);
-        root.addView(space3, new LinearLayout.LayoutParams(-1, dp(16)));
-
-        // 設定スイッチ項目群
-        addSwitchRow(root, "イヤホン操作で画面OFF", "autoClick", true, "イヤホンのダブルタップ（音量操作）や1回タップを3秒以内に2回で画面OFF");
-        addSwitchRow(root, "画面OFF時に振動(バイブ)", "vibrate", true, "ロック成功時に本体が短く振動します");
+        // 5. 設定スイッチ項目群 (画像通りの美しい発光トグルスイッチ)
+        addSwitchRowCustom(root, "イヤホン操作で画面OFF", "autoClick", true, 0xffa855f7, 0xff4338ca);
+        addSwitchRowCustom(root, "画面OFF時に振動 (バイブ)", "vibrate", true, 0xfffbbf24, 0xff92400e);
 
         View spaceDanger = new View(this);
-        root.addView(spaceDanger, new LinearLayout.LayoutParams(-1, dp(14)));
+        root.addView(spaceDanger, new LinearLayout.LayoutParams(-1, dp(8)));
 
-        // ⚠ 危険区域 (使わない時用の一括停止・リセット)
+        // 6. ⚠ 危険区域 (DANGER ZONE)
         LinearLayout dangerCard = new LinearLayout(this);
         dangerCard.setOrientation(LinearLayout.VERTICAL);
         dangerCard.setPadding(dp(16), dp(14), dp(16), dp(14));
-        GradientDrawable dangerBg = bg(0xff1f1315, 16);
-        dangerBg.setStroke(dp(1), 0xff882025);
+        GradientDrawable dangerBg = bg(0xff1c0e12, 16);
+        dangerBg.setStroke(dp(1.5f), 0xffef4444);
         dangerCard.setBackground(dangerBg);
 
-        TextView dangerTitle = text("⚠ 危険区域 / DANGER ZONE", 12, 0xffef4444);
+        TextView dangerTitle = text("⚠ 危険区域 / DANGER ZONE", 12.5f, 0xffef4444);
         dangerTitle.setTypeface(null, 1);
-        dangerTitle.setLetterSpacing(.1f);
+        dangerTitle.setLetterSpacing(.08f);
         dangerCard.addView(dangerTitle, new LinearLayout.LayoutParams(-1, dp(22)));
 
-        TextView dangerDesc = text("使わない時は全設定をOFFにして、バックグラウンド待機を停止できます。", 11, 0xffb59a9e);
+        TextView dangerDesc = text("使わない時は全設定をOFFにして、バックグラウンド待機を停止できます。", 11, 0xfffca5a5);
         dangerDesc.setPadding(0, 0, 0, dp(10));
         dangerCard.addView(dangerDesc, new LinearLayout.LayoutParams(-1, -2));
 
@@ -212,12 +271,20 @@ public class MainActivity extends Activity {
         stopAllBtn.setText("🛑 全設定をOFFにして完全停止");
         stopAllBtn.setTextColor(Color.WHITE);
         stopAllBtn.setTextSize(13);
+        stopAllBtn.setTypeface(null, 1);
         stopAllBtn.setAllCaps(false);
-        stopAllBtn.setBackground(bg(0xff991b1b, 14));
+
+        GradientDrawable stopBg = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xffdc2626, 0xff991b1b}
+        );
+        stopBg.setCornerRadius(dp(12));
+        stopBg.setStroke(dp(1), 0xfff87171);
+        stopAllBtn.setBackground(stopBg);
         stopAllBtn.setOnClickListener(v -> {
             new AlertDialog.Builder(this)
                     .setTitle("全機能を完全停止しますか？")
-                    .setMessage("イヤホン操作による画面OFFや音量キー操作など、本アプリの全設定をOFFにし、バックグラウンド監視を停止（休止状態）にします。\n\n再び使いたい時は『推奨設定に一括復元』をタップしてください。")
+                    .setMessage("イヤホン操作による画面OFFなど、本アプリの全設定をOFFにし、バックグラウンド監視を停止（休止状態）にします。\n\n再び使いたい時は『推奨設定に一括復元』をタップしてください。")
                     .setPositiveButton("完全停止する", (dialog, which) -> {
                         ShutdownAccessibilityService.stopAll(this);
                         refreshSwitches();
@@ -227,17 +294,20 @@ public class MainActivity extends Activity {
                     .setNegativeButton("キャンセル", null)
                     .show();
         });
-        dangerCard.addView(stopAllBtn, new LinearLayout.LayoutParams(-1, dp(44)));
+        dangerCard.addView(stopAllBtn, new LinearLayout.LayoutParams(-1, dp(42)));
 
         View spaceD1 = new View(this);
         dangerCard.addView(spaceD1, new LinearLayout.LayoutParams(-1, dp(8)));
 
         Button restoreBtn = new Button(this);
-        restoreBtn.setText("🔄 推奨設定に一括復元（再開）");
-        restoreBtn.setTextColor(0xffd9d5ff);
+        restoreBtn.setText("🔄 推奨設定に一括復元 (再開)");
+        restoreBtn.setTextColor(0xffe2e8f0);
         restoreBtn.setTextSize(12);
         restoreBtn.setAllCaps(false);
-        restoreBtn.setBackground(bg(0xff242044, 14));
+
+        GradientDrawable restoreBg = bg(0xff1e1724, 12);
+        restoreBg.setStroke(dp(1), 0x5564748b);
+        restoreBtn.setBackground(restoreBg);
         restoreBtn.setOnClickListener(v -> {
             ShutdownAccessibilityService.restoreDefaults(this);
             refreshSwitches();
@@ -252,29 +322,32 @@ public class MainActivity extends Activity {
         root.addView(dangerCard, new LinearLayout.LayoutParams(-1, -2));
 
         View space4 = new View(this);
-        root.addView(space4, new LinearLayout.LayoutParams(-1, dp(12)));
+        root.addView(space4, new LinearLayout.LayoutParams(-1, dp(16)));
 
-        TextView terms = text("チュートリアル・使い方を表示", 12, 0xffaaa6c8);
+        // 7. フッター (ピル型ボタン ＆ 著作権表示)
+        LinearLayout footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.VERTICAL);
+        footer.setGravity(Gravity.CENTER);
+
+        TextView terms = text("チュートリアル・使い方を表示 〉", 12, 0xff94a3b8);
         terms.setGravity(Gravity.CENTER);
+        GradientDrawable termsBg = bg(0xff16172e, 20);
+        termsBg.setStroke(dp(0.8f), 0x3364748b);
+        terms.setBackground(termsBg);
+        terms.setPadding(dp(22), dp(9), dp(22), dp(9));
         terms.setOnClickListener(v -> showGuide(true));
-        root.addView(terms, new LinearLayout.LayoutParams(-1, dp(34)));
+        footer.addView(terms, new LinearLayout.LayoutParams(-2, -2));
 
-        updateStatus = text("最新バージョン v2.5.1", 11, 0xff77768a);
-        updateStatus.setGravity(Gravity.CENTER);
-        root.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(26)));
+        updateStatus = text("最新バージョン v2.6.0", 11, 0xff5e5d70);
+        updateStatus.setVisibility(View.GONE); // バージョンは上部に表示するため非表示
+        footer.addView(updateStatus);
 
-        Button update = new Button(this);
-        update.setText("アップデートを確認");
-        update.setTextSize(13);
-        update.setAllCaps(false);
-        update.setTextColor(0xffd9d5ff);
-        update.setBackground(bg(0xff242044, 16));
-        update.setOnClickListener(v -> checkForUpdate());
-        root.addView(update, new LinearLayout.LayoutParams(-1, dp(44)));
-
-        TextView creator = text("©youyouboydragon", 11, 0xff5e5d70);
+        TextView creator = text("youyouboydragon", 11, 0xffb45309);
         creator.setGravity(Gravity.CENTER);
-        root.addView(creator, new LinearLayout.LayoutParams(-1, dp(32)));
+        creator.setPadding(0, dp(14), 0, dp(4));
+        footer.addView(creator, new LinearLayout.LayoutParams(-1, -2));
+
+        root.addView(footer, new LinearLayout.LayoutParams(-1, -2));
 
         scroll.addView(root);
         setContentView(scroll);
@@ -286,20 +359,36 @@ public class MainActivity extends Activity {
         scroll.postDelayed(this::checkForUpdate, 800);
     }
 
-    void addSwitchRow(LinearLayout parent, String label, String prefKey, boolean defaultVal, String desc) {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(14), dp(10), dp(14), dp(10));
-        box.setBackground(bg(0xff15172a, 14));
-
+    void addSwitchRowCustom(LinearLayout parent, String label, String prefKey, boolean defaultVal, int thumbColor, int trackColor) {
         LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(12), dp(16), dp(12));
+
+        GradientDrawable rowBg = new GradientDrawable();
+        rowBg.setColor(0xff121429);
+        rowBg.setCornerRadius(dp(14));
+        rowBg.setStroke(dp(0.8f), 0x336366f1);
+        row.setBackground(rowBg);
 
         TextView t = text(label, 14, Color.WHITE);
+        t.setTypeface(null, 1);
         row.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
 
         Switch sw = new Switch(this);
         sw.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(prefKey, defaultVal));
+
+        int[][] states = new int[][]{
+                new int[]{android.R.attr.state_checked},
+                new int[]{}
+        };
+        int[] thumbColors = new int[]{thumbColor, 0xff475569};
+        int[] trackColors = new int[]{trackColor, 0xff1e293b};
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            sw.setThumbTintList(new ColorStateList(states, thumbColors));
+            sw.setTrackTintList(new ColorStateList(states, trackColors));
+        }
+
         sw.setOnCheckedChangeListener((btn, checked) -> {
             if (isUpdatingSwitches) return;
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(prefKey, checked).apply();
@@ -310,15 +399,8 @@ public class MainActivity extends Activity {
         });
         row.addView(sw);
         switchMap.put(prefKey, sw);
-        box.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
-        if (desc != null) {
-            TextView d = text(desc, 11, 0xff77768a);
-            d.setPadding(0, dp(4), 0, 0);
-            box.addView(d, new LinearLayout.LayoutParams(-1, -2));
-        }
-
-        parent.addView(box, new LinearLayout.LayoutParams(-1, -2));
+        parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
         View sep = new View(this);
         parent.addView(sep, new LinearLayout.LayoutParams(-1, dp(8)));
@@ -337,64 +419,40 @@ public class MainActivity extends Activity {
         }
     }
 
-    static class SignalAnimationView extends View {
+    static class EarphoneIconView extends View {
         final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final RectF r = new RectF();
-        float phase;
 
-        SignalAnimationView(android.content.Context c) {
+        EarphoneIconView(Context c) {
             super(c);
-            p.setStrokeCap(Paint.Cap.ROUND);
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-            ValueAnimator a = ValueAnimator.ofFloat(0, 1);
-            a.setDuration(2200);
-            a.setRepeatCount(ValueAnimator.INFINITE);
-            a.addUpdateListener(v -> {
-                phase = (float) v.getAnimatedValue();
-                invalidate();
-            });
-            a.start();
         }
 
         @Override
-        protected void onDraw(Canvas c) {
-            super.onDraw(c);
-            float cx = getWidth() / 2f, cy = getHeight() / 2f - 10, d = Math.min(getWidth(), getHeight());
-            p.setStyle(Paint.Style.FILL);
-            p.setColor(0xff13162b);
-            r.set(cx - d * .36f, cy - d * .36f, cx + d * .36f, cy + d * .36f);
-            c.drawRoundRect(r, dpStatic(getContext(), 26), dpStatic(getContext(), 26), p);
-
-            for (int i = 0; i < 3; i++) {
-                float t = (phase + i / 3f) % 1f;
-                p.setStyle(Paint.Style.STROKE);
-                p.setStrokeWidth(dpStatic(getContext(), 2));
-                p.setColor(Color.argb((int)(90 * (1 - t)), 139, 124, 255));
-                c.drawCircle(cx, cy, d * (.20f + t * .24f), p);
-            }
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float w = getWidth(), h = getHeight();
+            float cx = w / 2f, cy = h / 2f;
 
             p.setStyle(Paint.Style.STROKE);
-            p.setStrokeWidth(dpStatic(getContext(), 5));
-            p.setColor(0xff8b7cff);
-            r.set(cx - 38, cy - 26, cx + 38, cy + 44);
-            c.drawArc(r, 200, 140, false, p);
-            c.drawLine(cx - 38, cy + 8, cx - 38, cy + 30, p);
-            c.drawLine(cx + 38, cy + 8, cx + 38, cy + 30, p);
+            p.setStrokeWidth(w * 0.08f);
+            p.setColor(0xfffbbf24);
+            p.setStrokeCap(Paint.Cap.ROUND);
 
-            p.setColor(Color.WHITE);
-            p.setStrokeWidth(dpStatic(getContext(), 3.5f));
-            c.drawLine(cx, cy - 38, cx, cy - 6, p);
-            c.drawArc(new RectF(cx - 24, cy - 24, cx + 24, cy + 24), -40, 260, false, p);
-        }
+            // ヘッドバンド (上部の弧)
+            RectF arc = new RectF(cx - w * 0.35f, cy - h * 0.42f, cx + w * 0.35f, cy + h * 0.28f);
+            canvas.drawArc(arc, 180, 180, false, p);
 
-        static int dpStatic(android.content.Context c, float n) {
-            return (int)(n * c.getResources().getDisplayMetrics().density + .5f);
+            // 左右のイヤホンイヤーピース
+            p.setStyle(Paint.Style.FILL);
+            RectF leftPiece = new RectF(cx - w * 0.42f, cy - h * 0.05f, cx - w * 0.22f, cy + h * 0.35f);
+            canvas.drawRoundRect(leftPiece, w * 0.08f, w * 0.08f, p);
+
+            RectF rightPiece = new RectF(cx + w * 0.22f, cy - h * 0.05f, cx + w * 0.42f, cy + h * 0.35f);
+            canvas.drawRoundRect(rightPiece, w * 0.08f, w * 0.08f, p);
         }
     }
 
     static class DownloadAnimationView extends View {
         final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final RectF r = new RectF();
         float phase;
         ValueAnimator anim;
 
@@ -425,12 +483,10 @@ public class MainActivity extends Activity {
             float cx = getWidth() / 2f;
             float cy = getHeight() / 2f - dpStatic(getContext(), 4);
 
-            // 1. 背景のダークエメラルド・グロー円
             p.setStyle(Paint.Style.FILL);
             p.setColor(0xff122b1d);
             c.drawCircle(cx, cy, dpStatic(getContext(), 28), p);
 
-            // 2. 広がるパルス波紋 (2本)
             for (int i = 0; i < 2; i++) {
                 float t = (phase + i * 0.5f) % 1.0f;
                 p.setStyle(Paint.Style.STROKE);
@@ -439,7 +495,6 @@ public class MainActivity extends Activity {
                 c.drawCircle(cx, cy, dpStatic(getContext(), 26 + t * 22), p);
             }
 
-            // 3. 上から下へ降り注ぐ光のデータストリーム (パーティクル5本)
             p.setStyle(Paint.Style.FILL);
             float[] xOffsets = {-22f, -11f, 0f, 11f, 22f};
             float[] speedOffsets = {0.1f, 0.5f, 0.75f, 0.3f, 0.9f};
@@ -452,7 +507,6 @@ public class MainActivity extends Activity {
                 c.drawCircle(px, py, dpStatic(getContext(), 2.2f), p);
             }
 
-            // 4. 受け皿トレイ (端末/受信台)
             float trayY = cy + dpStatic(getContext(), 20);
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(dpStatic(getContext(), 3));
@@ -462,16 +516,13 @@ public class MainActivity extends Activity {
             c.drawLine(cx - trayW, trayY - dpStatic(getContext(), 5), cx - trayW, trayY, p);
             c.drawLine(cx + trayW, trayY - dpStatic(getContext(), 5), cx + trayW, trayY, p);
 
-            // 5. 浮遊するダウンロードアロー (⬇)
             float bounce = (float) Math.sin(phase * Math.PI * 2) * dpStatic(getContext(), 4);
             float arrowY = cy + bounce;
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(dpStatic(getContext(), 4.5f));
             p.setColor(0xff4ade80);
 
-            // 軸
             c.drawLine(cx, arrowY - dpStatic(getContext(), 14), cx, arrowY + dpStatic(getContext(), 7), p);
-            // 傘 (左右の羽)
             float wing = dpStatic(getContext(), 9);
             c.drawLine(cx - wing, arrowY - dpStatic(getContext(), 2), cx, arrowY + dpStatic(getContext(), 7), p);
             c.drawLine(cx + wing, arrowY - dpStatic(getContext(), 2), cx, arrowY + dpStatic(getContext(), 7), p);
@@ -485,7 +536,7 @@ public class MainActivity extends Activity {
     static class SmoothProgressBar extends View {
         final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         final RectF r = new RectF();
-        float currentProgress = 0f; // 0.0f ~ 100.0f
+        float currentProgress = 0f;
         float targetProgress = 0f;
         ValueAnimator progAnim;
         ValueAnimator shimmerAnim;
@@ -522,10 +573,6 @@ public class MainActivity extends Activity {
             progAnim.start();
         }
 
-        public float getCurrentProgress() {
-            return currentProgress;
-        }
-
         @Override
         protected void onDetachedFromWindow() {
             super.onDetachedFromWindow();
@@ -541,19 +588,16 @@ public class MainActivity extends Activity {
             if (w <= 0 || h <= 0) return;
             float radius = h / 2f;
 
-            // 1. 暗緑色のトラック背景
             p.setStyle(Paint.Style.FILL);
             p.setColor(0xff122319);
             r.set(0, 0, w, h);
             c.drawRoundRect(r, radius, radius, p);
 
-            // トラックの枠線
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(dpStatic(getContext(), 1));
             p.setColor(0xff1c3e2b);
             c.drawRoundRect(r, radius, radius, p);
 
-            // 2. 進行バー (エメラルドグリーン)
             float fillW = w * (currentProgress / 100f);
             if (fillW > 0) {
                 c.save();
@@ -567,13 +611,12 @@ public class MainActivity extends Activity {
                 r.set(0, 0, fillW, h);
                 c.drawRect(r, p);
 
-                // 3. 右方向へ滑らかに流れる光沢ハイライト (シマーアニメーション)
                 float shimmerW = dpStatic(getContext(), 50);
                 float shimmerX = -shimmerW + shimmerPhase * (fillW + shimmerW * 2);
-                android.graphics.LinearGradient gradient = new android.graphics.LinearGradient(
+                LinearGradient gradient = new LinearGradient(
                         shimmerX, 0, shimmerX + shimmerW, 0,
                         new int[]{0x00ffffff, 0x66ffffff, 0x00ffffff},
-                        null, android.graphics.Shader.TileMode.CLAMP
+                        null, Shader.TileMode.CLAMP
                 );
                 p.setShader(gradient);
                 r.set(shimmerX, 0, shimmerX + shimmerW, h);
@@ -592,16 +635,22 @@ public class MainActivity extends Activity {
     void refresh() {
         boolean on = ShutdownAccessibilityService.isEnabled(this);
         boolean active = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("autoClick", true);
-        if (status != null) {
+        if (status != null && statusCardBg != null) {
             if (!on) {
-                status.setText("●  ユーザー補助サービス未接続");
-                status.setTextColor(0xffffb86b);
+                status.setText("⚠  ユーザー補助サービス未接続");
+                status.setTextColor(0xfff59e0b);
+                statusCardBg.setColor(0x18f59e0b);
+                statusCardBg.setStroke(dp(1.5f), 0xffd97706);
             } else if (!active) {
-                status.setText("●  全機能停止中 (休止)");
-                status.setTextColor(0xffff6b6b);
+                status.setText("🛑  全機能停止中 (休止)");
+                status.setTextColor(0xffef4444);
+                statusCardBg.setColor(0x18ef4444);
+                statusCardBg.setStroke(dp(1.5f), 0xffdc2626);
             } else {
                 status.setText("●  監視中 — 準備完了");
-                status.setTextColor(0xff74e0b0);
+                status.setTextColor(0xff22c55e);
+                statusCardBg.setColor(0x1822c55e);
+                statusCardBg.setStroke(dp(1.5f), 0xff16a34a);
             }
         }
     }
@@ -613,7 +662,7 @@ public class MainActivity extends Activity {
                         + "1. イヤホンのダブルタップ（音量UP/DOWN）や1回タップ（再生/停止）を、3秒以内に連続で2回行います。\n"
                         + "（トントン … トントン と3秒以内に2回操作）\n\n"
                         + "2. 3秒以内に2回目の操作を受信すると、画面がOFFになり端末がロックされます（短く振動します）。\n\n"
-                        + "※ 誤動作を防ぐため、スマホ本体の音量ボタンでは画面OFFになりません。イヤホンを装着して操作してください。")
+                        + "※ スマホ本体の物理音量ボタンを押しても画面が消えることはありません。イヤホンを操作してください。")
                 .setPositiveButton("OK", null)
                 .show();
     }
@@ -656,11 +705,11 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     finishUpdateLoading();
                     if (newer && downloadUrl != null) {
-                        updateStatus.setText("新しいバージョンがあります: " + tag);
+                        if (updateStatus != null) updateStatus.setText("新しいバージョンがあります: " + tag);
                         String sizeText = downloadSize > 0 ? "\n更新サイズ  約 " + formatFileSize(downloadSize) : "";
                         showUpdateResult("UPDATE READY", "現在  " + current + "\n最新  " + tag + sizeText + "\n\n新しいバージョンをダウンロードできます。", true, downloadUrl, downloadSize);
                     } else {
-                        updateStatus.setText("最新バージョンです  •  " + current);
+                        if (updateStatus != null) updateStatus.setText("最新バージョンです  •  " + current);
                         showUpdateResult("ALL CLEAR", "現在のバージョン  " + current + "\n\n最新バージョンを使用しています。", false, null, 0);
                     }
                 });
@@ -668,7 +717,7 @@ public class MainActivity extends Activity {
                 waitForLoading(started);
                 runOnUiThread(() -> {
                     finishUpdateLoading();
-                    updateStatus.setText("更新確認を完了できませんでした");
+                    if (updateStatus != null) updateStatus.setText("更新確認を完了できませんでした");
                     showUpdateResult("CHECK FAILED", "GitHub Releasesを確認できませんでした。\n\n通信状態を確認して再試行してください。", false, null, 0);
                 });
             }
@@ -869,7 +918,7 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     finishDownloadLoading();
-                    updateStatus.setText("APKのダウンロードに失敗しました");
+                    if (updateStatus != null) updateStatus.setText("APKのダウンロードに失敗しました");
                     showUpdateResult("DOWNLOAD FAILED", "APKをダウンロードできませんでした。\n\n通信状態を確認して、もう一度お試しください。", false, null, 0);
                 });
             }
@@ -939,7 +988,7 @@ public class MainActivity extends Activity {
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(i);
         } catch (Exception e) {
-            updateStatus.setText("インストーラーを開けませんでした");
+            if (updateStatus != null) updateStatus.setText("インストーラーを開けませんでした");
         }
     }
 
@@ -1001,13 +1050,13 @@ public class MainActivity extends Activity {
                         sb.append(n);
                     }
                     earphoneStatus.setText(sb.toString());
-                    earphoneStatus.setTextColor(0xff74e0b0);
+                    earphoneStatus.setTextColor(0xff38bdf8);
                 } else if (connected) {
-                    earphoneStatus.setText("🎧 イヤホン接続中 (有線/オーディオ機器)");
-                    earphoneStatus.setTextColor(0xff74e0b0);
+                    earphoneStatus.setText("🎧 有線イヤホン接続中");
+                    earphoneStatus.setTextColor(0xff38bdf8);
                 } else {
-                    earphoneStatus.setText("⚠ イヤホン未接続 (本体キー操作も設定可能)");
-                    earphoneStatus.setTextColor(0xffffb86b);
+                    earphoneStatus.setText("⚠ イヤホン未接続");
+                    earphoneStatus.setTextColor(0xfffcd34d);
                 }
             };
 
@@ -1033,10 +1082,10 @@ public class MainActivity extends Activity {
         } else {
             if (connected) {
                 earphoneStatus.setText("🎧 有線イヤホン接続中");
-                earphoneStatus.setTextColor(0xff74e0b0);
+                earphoneStatus.setTextColor(0xff38bdf8);
             } else {
                 earphoneStatus.setText("⚠ イヤホン未接続 (Bluetooth OFF)");
-                earphoneStatus.setTextColor(0xffffb86b);
+                earphoneStatus.setTextColor(0xfffcd34d);
             }
         }
     }
