@@ -43,12 +43,11 @@ public class IntroActivity extends Activity {
             );
             root.addView(logoView, lp);
 
-            // 画面タップで即スキップ
-            root.setOnClickListener(v -> openMain());
+            // スキップ機能はユーザーの指示により完全削除（タップしてもスキップせず演出を完走）
 
             setContentView(root);
 
-            // Unity風の「ゆっくり点いて、ゆっくり消える」アニメーション演出 (約2.4秒)
+            // Unity風の「ゆっくり点いて、じっくり見せて、ゆっくり消える」アニメーション演出 (約3.8秒)
             startUnitySplashAnimation();
         } catch (Throwable error) {
             openMain();
@@ -56,33 +55,33 @@ public class IntroActivity extends Activity {
     }
 
     private void startUnitySplashAnimation() {
-        // 1) ゆっくりフェードイン (1000ms)
+        // 1) ゆっくり幻想的にフェードイン (1400ms)
         logoView.animate()
                 .alpha(1f)
                 .scaleX(1.0f)
                 .scaleY(1.0f)
-                .setDuration(1000)
+                .setDuration(1400)
                 .setInterpolator(new AccelerateDecelerateInterpolator())
                 .withEndAction(() -> {
                     if (opened) return;
-                    // 2) 700ms ほど静止してロゴを見せる
+                    // 2) 1400ms ほどじっくり静止してドラゴンエンブレムを見せる
                     handler.postDelayed(() -> {
                         if (opened) return;
-                        // 3) ゆっくりフェードアウト (700ms)
+                        // 3) ゆっくり余韻を残してフェードアウト (1000ms)
                         logoView.animate()
                                 .alpha(0f)
                                 .scaleX(1.04f)
                                 .scaleY(1.04f)
-                                .setDuration(700)
+                                .setDuration(1000)
                                 .setInterpolator(new AccelerateDecelerateInterpolator())
                                 .withEndAction(this::openMain)
                                 .start();
-                    }, 700);
+                    }, 1400);
                 })
                 .start();
 
-        // 5秒以内に確実にメイン画面へ開くためのセーフティタイマー (3秒)
-        handler.postDelayed(this::openMain, 3000);
+        // 途中で打ち切られないよう長めの安全タイマー (8秒)
+        handler.postDelayed(this::openMain, 8000);
     }
 
     private void openMain() {
