@@ -113,7 +113,7 @@ public class MainActivity extends Activity {
         hero.addView(heroImg, new FrameLayout.LayoutParams(-1, -2));
 
         // 右上の歯車付きバージョン表示 (タップで更新確認)
-        TextView verBadge = text("v2.6.1 ⚙", 12, 0xfffcd34d);
+        TextView verBadge = text("v2.7.0 ⚙", 12, 0xfffcd34d);
         verBadge.setTypeface(null, 1);
         verBadge.setPadding(dp(8), dp(4), dp(8), dp(4));
         FrameLayout.LayoutParams verLp = new FrameLayout.LayoutParams(-2, -2, Gravity.RIGHT | Gravity.TOP);
@@ -359,7 +359,7 @@ public class MainActivity extends Activity {
         terms.setOnClickListener(v -> showGuide(true));
         footer.addView(terms, new LinearLayout.LayoutParams(-2, -2));
 
-        updateStatus = text("最新バージョン v2.6.1", 11, 0xff5e5d70);
+        updateStatus = text("最新バージョン v2.7.0", 11, 0xff5e5d70);
         updateStatus.setVisibility(View.GONE);
         footer.addView(updateStatus);
 

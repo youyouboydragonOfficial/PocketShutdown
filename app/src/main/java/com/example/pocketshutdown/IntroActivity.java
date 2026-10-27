@@ -33,11 +33,14 @@ public class IntroActivity extends Activity {
             logoView.setImageResource(R.drawable.intro_logo);
             logoView.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logoView.setAlpha(0f);
-            logoView.setScaleX(0.95f);
-            logoView.setScaleY(0.95f);
+            logoView.setScaleX(0.96f);
+            logoView.setScaleY(0.96f);
 
-            int size = (int)(Math.min(getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels) * 0.74f);
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(size, size, Gravity.CENTER);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    Gravity.CENTER
+            );
             root.addView(logoView, lp);
 
             // 画面タップで即スキップ
